@@ -148,11 +148,23 @@ App.pages.addTheme = {
         if (more) more.onclick = () => { this.shown += 10; this.drawResults(); this.remember(); };
     },
 
+    // Default name: the title for the main theme, "Title - Opening" in a season, numbered when the name is taken there
     nextName(destination) {
-        const existing = this.media.tracks.filter(t => destination === 'Main Theme'
-            ? t.location_type.startsWith('Main Theme') : t.location_type === destination).length;
-        const queued = App.pendingFor(this.media.folder_path).filter(i => i.destination === destination).length;
-        return `Opening ${existing + queued + 1}`;
+        const title = mediaTitle(this.media)
+            .replace(/\[.*?\]|\{.*?\}|\(\d{4}\)/g, '')
+            .replace(/\s*:\s*/g, ' - ')
+            .replace(/[<>"\/\\|?*]/g, '')
+            .replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '');
+        const base = destination === 'Main Theme' ? title : `${title} - Opening`;
+        const taken = new Set([
+            ...this.media.tracks.filter(t => destination === 'Main Theme'
+                ? t.location_type.startsWith('Main Theme') : t.location_type === destination)
+                .map(t => t.file_name.replace(/\.mp3$/i, '')),
+            ...App.pendingFor(this.media.folder_path).filter(i => i.destination === destination).map(i => i.name),
+        ].map(name => name.toLowerCase()));
+        let name = base;
+        for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${base} ${n}`;
+        return name;
     },
 
     destinations() {
@@ -209,8 +221,11 @@ App.pages.addTheme = {
         dest.value = this.destinations().some(([v]) => v === this.destination) ? this.destination : 'Main Theme';
         const nameInput = panel.querySelector('#atName');
         nameInput.value = this.nextName(dest.value);
+        // A name typed by hand stays when the destination changes; an empty field goes back to the default
+        let typed = false;
+        nameInput.oninput = () => { typed = nameInput.value.trim() !== ''; };
         dest.onchange = () => {
-            if (/^Opening \d+$/.test(nameInput.value)) nameInput.value = this.nextName(dest.value);
+            if (!typed) nameInput.value = this.nextName(dest.value);
         };
         ['#atStart', '#atEnd'].forEach(id => panel.querySelector(id).oninput = () => this.drawTimeline());
         panel.querySelector('#atMarkStart').onclick = () => this.mark('atStart');
@@ -236,6 +251,10 @@ App.pages.addTheme = {
         if (result.success && result.url) {
             this.stream = { url: result.url, duration: result.duration };
             if (choice.title === 'Video from the pasted link') nameInput.focus();
+            // Clicking a result means "let me hear it": start as soon as it loads, unless the panel was closed meanwhile
+            if (!document.getElementById('drawer').classList.contains('translate-x-full') && Player.key !== 'preview') {
+                Player.toggle('preview', this.stream.url, parseTime(document.getElementById('atStart').value));
+            }
         } else {
             toast('This video cannot be previewed. You can still add it.', 'error');
         }
