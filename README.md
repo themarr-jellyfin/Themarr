@@ -154,7 +154,7 @@ python main.py
 
 ## Roadmap
 
-- [ ] Import a whole YouTube playlist into the queue.
+- [ ] More sources to search and download themes from, besides YouTube.
 - [ ] Crossfades and more audio effects.
 - [ ] Desktop builds for Linux and macOS.
 
