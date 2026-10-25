@@ -1,5 +1,9 @@
 // Settings page: library folders, audio defaults, Jellyfin, backup and account. Changes save on their own.
 
+function fmtSize(bytes) {
+    return bytes >= 1073741824 ? `${(bytes / 1073741824).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1048576))} MB`;
+}
+
 App.pages.settings = {
     async render(view) {
         const s = App.settings;
@@ -67,11 +71,14 @@ App.pages.settings = {
 
                 <section class="card">
                     <div class="px-5 py-3 border-b border-line"><h2 class="font-medium">Backup</h2>
-                        <p class="text-xs text-faint mt-0.5">All the themes of one library in a .zip, to keep a copy or move them to another computer.</p></div>
-                    <div class="p-5 flex flex-wrap items-center gap-2">
-                        <select id="setBackupLib" class="field py-1.5 text-xs">${folders.map(f => `<option value="${esc(f)}">${esc(f.split(/[\\/]/).pop())}</option>`).join('')}</select>
-                        <button id="setExport" class="btn" ${folders.length ? '' : 'disabled'}>${icon('download')}Export</button>
-                        <button id="setImport" class="btn" ${folders.length ? '' : 'disabled'}>${icon('upload')}Restore</button>
+                        <p class="text-xs text-faint mt-0.5">All the themes of one library in a .zip. Restore puts each theme back in its media folder, on this computer or another one.</p></div>
+                    <div class="p-5">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <select id="setBackupLib" class="field py-1.5 text-xs">${folders.map(f => `<option value="${esc(f)}">${esc(f.split(/[\\/]/).pop())}</option>`).join('')}</select>
+                            <button id="setExport" class="btn" ${folders.length ? '' : 'disabled'}>${icon('download')}Export</button>
+                            <button id="setImport" class="btn" ${folders.length ? '' : 'disabled'}>${icon('upload')}Restore</button>
+                        </div>
+                        <div id="setBackupProgress"></div>
                     </div>
                 </section>
 
@@ -98,6 +105,7 @@ App.pages.settings = {
 
         this.bind(view, folders);
         refreshIcons();
+        this.resumeBackup();
         this.drawUpdates(App.update || await App.checkUpdates(true));
     },
 
@@ -300,14 +308,19 @@ docker compose up -d --build</pre>
         });
     },
 
+    // ---------------- Backup ----------------
+    // Export and restore run on the server, one at a time; the page polls /api/library/backup/status
+
     async exportBackup(folder) {
-        toast('Creating the backup...', 'info');
-        const result = await api('/api/library/backup/export', { base_path: folder });
-        if (!result.success) return toast(result.message, 'error');
-        if (App.info.server_mode) {
-            location.href = `/api/library/backup/download?name=${encodeURIComponent(result.filename)}`;
+        let savePath = '';
+        if (!App.info.server_mode) {
+            const choice = await api('/api/library/backup/save_dialog', { base_path: folder });
+            if (!choice.success) return;
+            savePath = choice.path;
         }
-        toast(App.info.server_mode ? result.message : `${result.message} Saved as ${result.filename} in the backups folder next to Themarr.`, 'success');
+        const result = await api('/api/library/backup/export', { base_path: folder, save_path: savePath });
+        if (!result.success) return toast(result.message, 'error');
+        this.followBackup();
     },
 
     async importBackup(folder) {
@@ -320,55 +333,131 @@ docker compose up -d --build</pre>
         }
         if (!zipPath) return;
 
-        toast('Reading the backup...', 'info');
+        this.drawBackup('Reading the backup...');
         const analysis = await api('/api/library/backup/analyze', { zip_path: zipPath, base_path: folder });
-        if (!analysis.success) return toast(analysis.message, 'error');
-
-        let decision = 'skip_missing';
-        if (analysis.missing_folders.length) {
-            decision = await this.askMissing(analysis.missing_folders);
+        this.drawBackup(null);
+        if (!analysis.success) {
+            if (App.info.server_mode) api('/api/library/backup/restore', { zip_path: zipPath, base_path: folder, decision: 'cancel' });
+            return toast(analysis.message, 'error');
         }
-        const result = await api('/api/library/backup/finalize', {
-            temp_import_id: analysis.temp_import_id, base_path: folder, decision, missing_folders: analysis.missing_folders,
-        });
-        toast(result.message, result.success ? 'success' : 'error');
-        App.library = null;
+
+        const decision = await this.askRestore(analysis, folder);
+        const result = await api('/api/library/backup/restore', { zip_path: zipPath, base_path: folder, decision });
+        if (!result.success) return toast(result.message, 'error');
+        if (decision !== 'cancel') this.followBackup();
     },
 
+    // Server: XMLHttpRequest instead of fetch, to show how much of the file is uploaded
     uploadBackup() {
         return new Promise(resolve => {
             const input = document.getElementById('backupUploadInput');
             input.value = '';
-            input.onchange = async () => {
+            input.onchange = () => {
                 const file = input.files[0];
                 if (!file) return resolve(null);
-                toast(`Uploading ${file.name}...`, 'info');
                 const form = new FormData();
                 form.append('file', file);
-                const result = await fetch('/api/library/backup/upload', { method: 'POST', body: form }).then(r => r.json()).catch(() => ({}));
-                if (!result.success) toast(result.message || 'Upload failed.', 'error');
-                resolve(result.success ? result.file_path : null);
+                const request = new XMLHttpRequest();
+                request.open('POST', '/api/library/backup/upload');
+                request.upload.onprogress = e => {
+                    if (e.lengthComputable) this.drawBackup(`Uploading ${file.name}: ${fmtSize(e.loaded)} of ${fmtSize(e.total)}...`, e.loaded / e.total * 100);
+                };
+                const done = (result, fallback) => {
+                    this.drawBackup(null);
+                    if (!result.success) toast(result.message || fallback, 'error');
+                    resolve(result.success ? result.file_path : null);
+                };
+                request.onload = () => {
+                    let result = {};
+                    try { result = JSON.parse(request.responseText); } catch { /* answered with an error page */ }
+                    done(result, request.status === 413 ? 'The file is larger than 2 GB.' : 'Upload failed.');
+                };
+                request.onerror = () => done({}, 'Upload failed.');
+                this.drawBackup(`Uploading ${file.name}...`, 0);
+                request.send(form);
             };
             input.click();
         });
     },
 
-    askMissing(missing) {
+    askRestore(analysis, folder) {
         return new Promise(resolve => {
-            const canCreate = !App.info.server_mode;
+            const missing = analysis.missing_folders;
+            const library = esc(folder.split(/[\\/]/).pop());
+            const none = missing.length === analysis.media_count;
+            const canCreate = !App.info.server_mode && missing.length > 0;
+            const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
             const dialog = openDialog(`
                 <div class="p-5">
-                    <h2 class="font-semibold text-[15px]">Some media are not in this library</h2>
-                    <p class="text-muted mt-2">The backup has themes for ${missing.length} media folder${missing.length > 1 ? 's' : ''} that this library does not have:</p>
-                    <div class="mt-3 max-h-40 overflow-y-auto scroll bg-page border border-line rounded-md p-2 font-mono text-xs text-muted">${missing.map(esc).join('<br>')}</div>
-                    ${canCreate ? '' : '<p class="text-[11px] text-faint mt-2">On the server, Themarr never creates media folders.</p>'}
+                    <h2 class="font-semibold text-[15px]">Restore themes</h2>
+                    <p class="text-muted mt-2 leading-relaxed">The backup has ${plural(analysis.theme_count, 'theme')} for ${plural(analysis.media_count, 'media folder')}.
+                        They go back to <span class="text-ink">${library}</span>, and a theme with the same name there is replaced.</p>
+                    ${missing.length ? `
+                    <p class="text-muted mt-3">${none ? `None of these media folders are in ${library}. Check that you chose the right library.` :
+                        `${plural(missing.length, 'media folder')} ${missing.length === 1 ? 'is' : 'are'} not in ${library}:`}</p>
+                    <div class="mt-2 max-h-40 overflow-y-auto scroll bg-page border border-line rounded-md p-2 font-mono text-xs text-muted">${missing.map(esc).join('<br>')}</div>
+                    ${App.info.server_mode ? '<p class="text-[11px] text-faint mt-2">On the server, Themarr never creates media folders.</p>' : ''}` : ''}
                 </div>
                 <div class="px-5 py-3 border-t border-line flex flex-wrap justify-end gap-2">
                     <button data-d="cancel" class="btn btn-ghost">Cancel</button>
-                    ${canCreate ? '<button data-d="create_all" class="btn">Create folders and import all</button>' : ''}
-                    <button data-d="skip_missing" class="btn btn-primary">Import the others</button>
+                    ${canCreate ? '<button data-d="create_all" class="btn">Create folders and restore all</button>' : ''}
+                    ${none ? '' : `<button data-d="skip_missing" class="btn btn-primary">${missing.length ? 'Restore the others' : 'Restore'}</button>`}
                 </div>`);
             dialog.querySelectorAll('[data-d]').forEach(b => b.onclick = () => { closeDialog(); resolve(b.dataset.d); });
         });
+    },
+
+    // text null clears the box
+    drawBackup(text, percent = null, cancel = false) {
+        const box = document.getElementById('setBackupProgress');
+        if (!box) return;
+        const busy = text !== null;
+        ['setExport', 'setImport', 'setBackupLib'].forEach(id => { const el = document.getElementById(id); if (el) el.disabled = busy; });
+        box.innerHTML = busy ? `<div class="mt-4 flex items-center gap-3 text-xs">
+            <span class="text-accent-text">${icon('loader-circle', 'animate-spin')}</span><span class="flex-1 min-w-0 truncate">${esc(text)}</span>
+            ${percent !== null ? `<div class="w-48 h-1.5 bg-raised rounded-full overflow-hidden shrink-0"><div class="h-full bg-accent transition-[width]" style="width:${percent}%"></div></div>` : ''}
+            ${cancel ? '<button id="setBackupCancel" class="btn btn-ghost py-1 text-xs">Cancel</button>' : ''}</div>` : '';
+        refreshIcons();
+        box.querySelector('#setBackupCancel')?.addEventListener('click', event => {
+            event.currentTarget.disabled = true;
+            api('/api/library/backup/cancel', {});
+        });
+    },
+
+    // Back on Settings while a backup runs, or after it ended elsewhere: show it again
+    async resumeBackup() {
+        const state = await api('/api/library/backup/status').catch(() => null);
+        if (state && (this.backupFollowing || state.stage === 'scanning' || state.stage === 'working')) this.followBackup();
+    },
+
+    async followBackup() {
+        this.backupFollowing = true;
+        if (!document.getElementById('setBackupProgress')) return;    // left Settings: resumeBackup picks it up again
+        const state = await api('/api/library/backup/status').catch(() => null);
+        if (!state) return setTimeout(() => this.followBackup(), 1500);
+        const exporting = state.task === 'export';
+
+        if (state.stage === 'scanning') {
+            this.drawBackup(exporting ? 'Finding the themes of this library...' : 'Reading the backup...', null, true);
+            return setTimeout(() => this.followBackup(), 700);
+        }
+        if (state.stage === 'working') {
+            const percent = state.total ? state.done / state.total * 100 : 0;
+            this.drawBackup(`${exporting ? 'Backing up' : 'Restoring'} ${state.done} of ${state.total} themes...`, percent, true);
+            return setTimeout(() => this.followBackup(), 700);
+        }
+
+        this.backupFollowing = false;
+        this.drawBackup(null);
+        if (state.stage === 'error') return toast(state.message, 'error');
+        if (state.stage === 'cancelled') return toast(state.message, 'info');
+        if (!exporting) App.library = null;
+        if (exporting && App.info.server_mode) {
+            location.href = `/api/library/backup/download?name=${encodeURIComponent(state.filename)}`;
+        }
+        toast(state.message, 'success');
+        const where = !exporting ? '' : App.info.server_mode ? ` ${fmtSize(state.size)}, downloading it now.` : ` ${fmtSize(state.size)}, saved to ${state.path}`;
+        document.getElementById('setBackupProgress').innerHTML = `<p class="mt-4 flex items-center gap-2 text-xs text-green-400 min-w-0">${icon('circle-check')}<span class="truncate" title="${esc(state.path)}">${esc(state.message + where)}</span></p>`;
+        refreshIcons();
     },
 };

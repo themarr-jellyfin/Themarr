@@ -1,9 +1,9 @@
 import os
 import json
 import threading
+import time
 import re
 import tempfile
-import shutil
 import requests
 import subprocess
 import zipfile
@@ -22,6 +22,7 @@ from core.audio import download_music, normalize_and_save, normalize_audio_ffmpe
 from core.jellyfin import fetch_jellyfin_data, download_jellyfin_image, fetch_jellyfin_season_image, find_jellyfin_item, get_library_index, match_media_folder, local_media_folder, install_jellyfin_buttons, refresh_jellyfin_media
 from core.files import generate_destination_path, move_loose_episodes, clean_search_name, safe_move
 from core.jobs import ThemeQueue
+from core import backup
 
 global_state = {
     "is_processing": False,
@@ -149,16 +150,7 @@ def process_folder_artwork(media_folder_path, media_folder_name, config, only_fi
             except Exception:
                 pass
 
-IMPORT_PREFIX = "themarr_import_"
 UPLOAD_PREFIX = "themarr_upload_"
-
-def _is_import_session(path):
-    """True only for a temp folder created by analyze_backup"""
-    if not path or not os.path.isdir(path):
-        return False
-    real = os.path.realpath(path)
-    temp_root = os.path.realpath(tempfile.gettempdir())
-    return os.path.dirname(real) == temp_root and os.path.basename(real).startswith(IMPORT_PREFIX)
 
 def _is_uploaded_backup(path):
     """True only for a zip saved by the upload route"""
@@ -169,10 +161,26 @@ def _is_uploaded_backup(path):
             and os.path.basename(real).startswith(UPLOAD_PREFIX) and real.lower().endswith('.zip'))
 
 def save_uploaded_backup(file_storage):
+    # Uploads left behind by a page closed before the restore started
+    temp_root = tempfile.gettempdir()
+    for name in os.listdir(temp_root):
+        old = os.path.join(temp_root, name)
+        if name.startswith(UPLOAD_PREFIX) and time.time() - os.path.getmtime(old) > 86400:
+            os.remove(old)
     fd, path = tempfile.mkstemp(prefix=UPLOAD_PREFIX, suffix='.zip')
     os.close(fd)
     file_storage.save(path)
     return path
+
+def _backup_name(base_path):
+    library = re.sub(r'[^A-Za-z0-9]+', '-', os.path.basename(os.path.normpath(base_path))).strip('-')
+    return f"Themarr_Backup_{library + '_' if library else ''}{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+
+def _remove_server_backups():
+    """The server only keeps a backup until it is downloaded: the next export removes it"""
+    for name in os.listdir(BACKUP_DIR):
+        if backup.NAME.fullmatch(name):
+            os.remove(os.path.join(BACKUP_DIR, name))
 
 def _start_background(target, *args):
     t = threading.Thread(target=target, args=args)
@@ -990,47 +998,56 @@ class Api:
             print(f"[LIBRARY] Processing execution error: {e}")
             return {"success": False, "message": str(e)}
 
-    def export_media_backup(self, base_path, scope, selected_folders=None):
+    def export_media_backup(self, base_path, save_path=''):
+        """Starts the backup of one library; the page follows it through backup.state"""
         check_media_read(base_path or MEDIA_ROOT or '.')
+        if not base_path or not os.path.isdir(base_path):
+            return {"success": False, "message": "Media folder is not configured."}
+        if backup.running():
+            return {"success": False, "message": "A backup or restore is already running."}
+
+        if SERVER_MODE or not save_path:
+            os.makedirs(BACKUP_DIR, exist_ok=True)
+            if SERVER_MODE:
+                _remove_server_backups()
+            zip_path = os.path.join(BACKUP_DIR, _backup_name(base_path))
+        else:
+            zip_path = save_path if save_path.lower().endswith('.zip') else save_path + '.zip'
+
+        root = _library_root(base_path)
+
+        def list_files():
+            # Only file names: reading every MP3 as the Library page does takes minutes on a big library
+            folders = [base_path] if root != base_path else [os.path.join(root, f) for f in sorted(os.listdir(root))]
+            return [path for folder in folders if os.path.isdir(folder) for path in theme_files_in(folder)]
+
+        backup.start_export(list_files, root, zip_path)
+        return {"success": True}
+
+    def choose_backup_destination(self, base_path):
+        """Desktop: asks where to save the backup before it is made"""
+        if SERVER_MODE:
+            return {"success": False, "path": ""}
+        name = _backup_name(base_path)
+        path = ""
         try:
-            backup_dir = BACKUP_DIR
-            os.makedirs(backup_dir, exist_ok=True)
-            
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            zip_name = f"Themarr_Backup_{timestamp}.zip"
-            zip_path = os.path.join(backup_dir, zip_name)
-            
-            library_res = self.list_local_library(base_path, scope, selected_folders)
-            if not library_res.get("success"):
-                return {"success": False, "message": "No themes found to export."}
-            
-            library_data = library_res["library"]
-            
-            real_root = _library_root(base_path)
-            
-            written_files = 0
-            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                for media in library_data:
-                    for track in media["tracks"]:
-                        file_path = track["file_path"]
-                        if os.path.exists(file_path):
-                            arcname = os.path.relpath(file_path, real_root)
-                            zipf.write(file_path, arcname)
-                            written_files += 1
-                                    
-            if written_files == 0:
-                if os.path.exists(zip_path):
-                    os.remove(zip_path)
-                return {"success": False, "message": "No theme audio files found to back up."}
-                
-            return {
-                "success": True, 
-                "message": f"Backup exported with {written_files} theme(s).",
-                "filename": zip_name
-            }
+            if webview and len(webview.windows) > 0:
+                result = next(iter(webview.windows)).create_file_dialog(
+                    webview.SAVE_DIALOG, save_filename=name, file_types=('Zip files (*.zip)',))
+                path = result if isinstance(result, str) else (next(iter(result), "") if result else "")
+            else:
+                cmd = (
+                    "[System.Reflection.Assembly]::LoadWithPartialName('System.windows.forms') | Out-Null;"
+                    " $dialog = New-Object System.Windows.Forms.SaveFileDialog;"
+                    " $dialog.Filter = 'Themarr Backup (*.zip)|*.zip';"
+                    " $dialog.Title = 'Save Themarr Backup';"
+                    f" $dialog.FileName = '{name}';"
+                    " if($dialog.ShowDialog() -eq 'OK') { $dialog.FileName }"
+                )
+                path = _powershell_dialog(cmd)
         except Exception as e:
-            print(f"[BACKUP] Export failed: {e}")
-            return {"success": False, "message": str(e)}
+            print(f"[BACKUP] Could not open the save dialog: {e}")
+        return {"success": bool(path), "path": path}
 
     def select_backup_file(self):
         file_path = ""
@@ -1040,7 +1057,7 @@ class Api:
             if webview and len(webview.windows) > 0:
                 active_window = next(iter(webview.windows))
                 result = active_window.create_file_dialog(
-                    webview.OPEN_DIALOG,  
+                    webview.OPEN_DIALOG,
                     file_types=('Zip files (*.zip)', 'All files (*.*)')
                 )
                 if result:
@@ -1059,6 +1076,7 @@ class Api:
         return {"success": bool(file_path), "file_path": file_path}
 
     def analyze_backup(self, zip_path, base_path):
+        """Reads the list of themes in the zip, without extracting it, so the page can ask before restoring"""
         check_media_read(base_path or MEDIA_ROOT or '.')
         if not zip_path or not os.path.exists(zip_path):
             return {"success": False, "message": "Invalid backup file."}
@@ -1066,97 +1084,36 @@ class Api:
             return {"success": False, "message": "Upload the backup file through the browser."}
         if not base_path or not os.path.exists(base_path):
             return {"success": False, "message": "Media folder is not configured."}
-            
+
         try:
-            temp_dir = tempfile.mkdtemp(prefix=IMPORT_PREFIX)
-            
-            with zipfile.ZipFile(zip_path, 'r') as zipf:
-                zipf.extractall(temp_dir)
-            if _is_uploaded_backup(zip_path):
-                os.remove(zip_path)
-                
-            real_dest_root = _library_root(base_path)
-            
-            backup_media_folders = []
-            for item in os.listdir(temp_dir):
-                if os.path.isdir(os.path.join(temp_dir, item)):
-                    backup_media_folders.append(item)
-                    
-            missing_folders = []
-            for folder in backup_media_folders:
-                dest_folder_path = os.path.join(real_dest_root, folder)
-                if not os.path.exists(dest_folder_path):
-                    missing_folders.append(folder)
-                    
-            return {
-                "success": True,
-                "missing_folders": missing_folders,
-                "temp_import_id": temp_dir,
-                "media_count": len(backup_media_folders)
-            }
+            folders, missing, themes = backup.read_backup(zip_path, _library_root(base_path))
+        except zipfile.BadZipFile:
+            return {"success": False, "message": "This file is not a valid .zip."}
         except Exception as e:
             print(f"[BACKUP] Could not analyze the backup: {e}")
             return {"success": False, "message": str(e)}
+        if not themes:
+            return {"success": False, "message": "This .zip has no Themarr themes."}
+        return {"success": True, "zip_path": zip_path, "media_count": len(folders), "theme_count": themes, "missing_folders": missing}
 
-    def finalize_backup_import(self, temp_import_id, base_path, decision, missing_folders):
-        # The id is a folder path sent back by the page and is deleted at the end: only accept our own import folders
-        if not _is_import_session(temp_import_id):
-            return {"success": False, "message": "The import session expired or is invalid. Please import the backup again."}
-            
-        try:
-            real_dest_root = _library_root(base_path)
-            
-            imported_count = 0
-            
-            if decision == "cancel":
-                shutil.rmtree(temp_import_id, ignore_errors=True)
-                return {"success": True, "message": "Import cancelled."}
-                
-            for folder in os.listdir(temp_import_id):
-                temp_folder_path = os.path.join(temp_import_id, folder)
-                if not os.path.isdir(temp_folder_path):
-                    continue
-                    
-                dest_folder_path = os.path.join(real_dest_root, folder)
-                
-                if folder in missing_folders:
-                    if decision in ("skip", "skip_missing"):
-                        continue
-                    elif decision == "create_all":
-                        if SERVER_MODE:
-                            print(f"[IMPORT] Skipping '{folder}': media folders are never created on the server.")
-                            continue
-                        os.makedirs(dest_folder_path, exist_ok=True)
-                        print(f"[IMPORT] Creating missing media folder: '{folder}'")
-                        
-                for root, _, files in os.walk(temp_folder_path):
-                    for file in files:
-                        if file.lower().endswith(".mp3"):
-                            src_file = os.path.join(root, file)
-                            rel_subpath = os.path.relpath(src_file, temp_import_id)
-                            dest_file = os.path.join(real_dest_root, rel_subpath)
+    def restore_backup(self, zip_path, base_path, decision):
+        uploaded = _is_uploaded_backup(zip_path)
+        if SERVER_MODE and not uploaded:
+            return {"success": False, "message": "Upload the backup file through the browser."}
+        if not zip_path or not os.path.isfile(zip_path):
+            return {"success": False, "message": "The backup file is gone. Please choose it again."}
+        check_media_read(base_path or MEDIA_ROOT or '.')
 
-                            try:
-                                check_theme_write(dest_file, "import")
-                            except UnsafeMediaOperation as blocked:
-                                print(f"[IMPORT] {blocked}")
-                                continue
-
-                            os.makedirs(os.path.dirname(dest_file), exist_ok=True)
-                            
-                            shutil.copy2(src_file, dest_file)
-                            imported_count += 1
-                                    
-            shutil.rmtree(temp_import_id, ignore_errors=True)
-            
-            return {
-                "success": True, 
-                "message": f"Import complete. {imported_count} theme(s) restored."
-            }
-        except Exception as e:
-            print(f"[BACKUP] Import failed: {e}")
-            shutil.rmtree(temp_import_id, ignore_errors=True)
-            return {"success": False, "message": str(e)}
+        if decision == "cancel":
+            if uploaded:
+                os.remove(zip_path)
+            return {"success": True, "message": "Restore cancelled."}
+        if backup.running():
+            return {"success": False, "message": "A backup or restore is already running."}
+        # Media folders are never created on the server
+        create_missing = decision == "create_all" and not SERVER_MODE
+        backup.start_restore(zip_path, _library_root(base_path), create_missing, uploaded)
+        return {"success": True}
 
     def get_assistant_search_query(self, folder_name, folder_path=None):
         try:

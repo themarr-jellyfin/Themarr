@@ -7,7 +7,7 @@ from flask import render_template, jsonify, request, send_file, session, redirec
 from werkzeug.exceptions import HTTPException
 
 from core.config import load_config, SERVER_MODE, MEDIA_ROOT, BACKUP_DIR, APP_VERSION
-from core import updates
+from core import updates, backup
 from core.safety import UnsafeMediaOperation, check_media_read, check_theme_write, is_theme_file
 from api_controller import save_uploaded_backup, local_cover
 
@@ -286,13 +286,27 @@ def register_routes(app, api_system):
     # ---------------- Backup ----------------
     @app.route('/api/library/backup/export', methods=['POST'])
     def api_export_backup():
-        return jsonify(api_system.export_media_backup(base_path=body().get('base_path', ''), scope='all'))
+        data = body()
+        return jsonify(api_system.export_media_backup(base_path=data.get('base_path', ''), save_path=data.get('save_path', '')))
+
+    @app.route('/api/library/backup/save_dialog', methods=['POST'])
+    def api_backup_save_dialog():
+        return jsonify(api_system.choose_backup_destination(base_path=body().get('base_path', '')))
+
+    @app.route('/api/library/backup/status', methods=['GET'])
+    def api_backup_status():
+        return jsonify(backup.state)
+
+    @app.route('/api/library/backup/cancel', methods=['POST'])
+    def api_backup_cancel():
+        backup.cancel()
+        return jsonify({"success": True})
 
     @app.route('/api/library/backup/download')
     def api_download_backup():
         name = os.path.basename(request.args.get('name', ''))
         path = os.path.join(BACKUP_DIR, name)
-        if not re.fullmatch(r'Themarr_Backup_\d{8}_\d{6}\.zip', name) or not os.path.isfile(path):
+        if not backup.NAME.fullmatch(name) or not os.path.isfile(path):
             return "Backup not found", 404
         return send_file(path, as_attachment=True, download_name=name)
 
@@ -312,14 +326,13 @@ def register_routes(app, api_system):
         data = body()
         return jsonify(api_system.analyze_backup(zip_path=data.get('zip_path', ''), base_path=data.get('base_path', '')))
 
-    @app.route('/api/library/backup/finalize', methods=['POST'])
-    def api_finalize_backup():
+    @app.route('/api/library/backup/restore', methods=['POST'])
+    def api_restore_backup():
         data = body()
-        return jsonify(api_system.finalize_backup_import(
-            temp_import_id=data.get('temp_import_id', ''),
+        return jsonify(api_system.restore_backup(
+            zip_path=data.get('zip_path', ''),
             base_path=data.get('base_path', ''),
             decision=data.get('decision', 'cancel'),
-            missing_folders=data.get('missing_folders', [])
         ))
 
     @app.errorhandler(Exception)
