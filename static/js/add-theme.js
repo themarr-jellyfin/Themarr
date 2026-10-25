@@ -188,6 +188,7 @@ App.pages.addTheme = {
                             <input id="atEnd" class="field py-0.5 px-1.5 w-16 font-mono text-[11px]" placeholder="end"> End</span>
                     </div>
                 </div>
+                <div class="self-start pt-5 h-14 flex items-center">${Volume.html()}</div>
             </div>
             <div class="grid grid-cols-2 gap-3">
                 <label class="text-xs text-muted space-y-1"><span class="block">Name</span><input id="atName" class="field w-full"></label>
@@ -219,6 +220,7 @@ App.pages.addTheme = {
             current: () => Player.position('preview'),
             seek: seconds => this.stream && Player.seekTo('preview', this.stream.url, seconds),
         });
+        Volume.bind(panel.querySelector('[data-volume]'));
         panel.querySelector('#atPlay').onclick = () => {
             if (!this.stream) return;
             const start = parseTime(document.getElementById('atStart').value);

@@ -196,6 +196,37 @@ const Player = {
             if (this.key) toast('Could not play this audio.', 'error');
             this.stop();
         });
+        // The volume is saved in the settings (the desktop window forgets browser storage when it closes),
+        // once the slider stops moving
+        let saveTimer = null;
+        this.el.addEventListener('volumechange', () => {
+            Volume.sync();
+            if (this.restoringVolume) return;
+            clearTimeout(saveTimer);
+            saveTimer = setTimeout(() => App.saveSettings({ preview_volume: { level: this.el.volume, muted: this.el.muted } }), 600);
+        });
+    },
+
+    restoreVolume(saved) {
+        if (!saved) return;
+        this.restoringVolume = true;
+        this.el.volume = Math.min(1, Math.max(0, Number(saved.level ?? 1)));
+        this.el.muted = !!saved.muted;
+        // volumechange arrives after this returns
+        setTimeout(() => { this.restoringVolume = false; });
+    },
+
+    // Moving the volume above zero unmutes, like YouTube and Jellyfin
+    setVolume(level) {
+        level = Math.min(1, Math.max(0, level));
+        this.el.volume = level;
+        this.el.muted = level === 0;
+    },
+
+    // Unmuting at zero volume comes back at half, otherwise nothing would be heard
+    setMuted(muted) {
+        if (!muted && this.el.volume === 0) this.el.volume = 0.5;
+        this.el.muted = muted;
     },
 
     // Plays url for `key`; calling again with the same key pauses or resumes
@@ -258,6 +289,46 @@ const Player = {
 
     notify() {
         this.listeners.forEach(listener => listener(this));
+    },
+};
+
+// ---------------------------------------------------------------------------
+// Volume: speaker button (mute) and slider. One volume for every preview, remembered on this computer.
+// ---------------------------------------------------------------------------
+const Volume = {
+    html() {
+        return `<div class="volume" data-volume>
+            <button type="button" class="icon-btn p-1" data-mute>${icon('volume-2', 'icon-sm')}</button>
+            <input type="range" min="0" max="100" step="1" aria-label="Volume">
+        </div>`;
+    },
+
+    bind(el) {
+        const slider = el.querySelector('input');
+        slider.oninput = () => Player.setVolume(slider.value / 100);
+        el.querySelector('[data-mute]').onclick = () => Player.setMuted(!Player.el.muted);
+        this.sync();
+    },
+
+    sync() {
+        const { volume, muted } = Player.el;
+        const percent = Math.round((muted ? 0 : volume) * 100);
+        const name = percent === 0 ? 'volume-x' : percent < 50 ? 'volume-1' : 'volume-2';
+        let changed = false;
+        document.querySelectorAll('[data-volume]').forEach(el => {
+            const slider = el.querySelector('input');
+            slider.value = percent;
+            slider.style.setProperty('--level', `${percent}%`);
+            slider.title = `Volume ${percent}%`;
+            const button = el.querySelector('[data-mute]');
+            button.title = muted ? 'Unmute' : 'Mute';
+            if (button.dataset.icon !== name) {
+                button.dataset.icon = name;
+                button.innerHTML = icon(name, 'icon-sm');
+                changed = true;
+            }
+        });
+        if (changed) refreshIcons();
     },
 };
 
@@ -519,6 +590,7 @@ App.start = async function () {
     const [info, settings] = await Promise.all([api('/api/app_info'), api('/api/get_settings')]);
     App.info = info;
     App.settings = settings;
+    Player.restoreVolume(settings.preview_volume);
     document.getElementById('appVersion').textContent = `v${info.version}`;
 
     document.getElementById('refreshBtn').onclick = () => App.refresh();
