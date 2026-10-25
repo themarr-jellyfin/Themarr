@@ -70,6 +70,15 @@ App.pages.settings = {
                 </section>
 
                 <section class="card">
+                    <div class="px-5 py-3 border-b border-line"><h2 class="font-medium">Display</h2>
+                        <p class="text-xs text-faint mt-0.5">Artwork from Jellyfin, or saved in the media folder (fanart.jpg, logo.png).</p></div>
+                    <div class="p-5 grid grid-cols-[180px_1fr] gap-x-6 gap-y-4 items-center max-[700px]:grid-cols-1">
+                        <label class="text-muted" for="setBackdrops">Backdrops</label>
+                        <label class="flex items-center gap-2 text-xs"><input id="setBackdrops" type="checkbox" class="w-4 h-4" ${s.show_backdrops !== false ? 'checked' : ''}>Show background art on the Library and media pages</label>
+                    </div>
+                </section>
+
+                <section class="card">
                     <div class="px-5 py-3 border-b border-line"><h2 class="font-medium">Backup</h2>
                         <p class="text-xs text-faint mt-0.5">All the themes of one library in a .zip. Restore puts each theme back in its media folder, on this computer or another one.</p></div>
                     <div class="p-5">
@@ -249,6 +258,8 @@ docker compose up -d --build</pre>
             await App.saveSettings({ check_updates: event.target.checked });
             if (event.target.checked) App.checkUpdates(true);
         };
+
+        $('setBackdrops').onchange = event => App.saveSettings({ show_backdrops: event.target.checked });
 
         const openBrowser = $('setOpenBrowser');
         if (openBrowser) openBrowser.onchange = () => App.saveSettings({ open_browser: openBrowser.checked });

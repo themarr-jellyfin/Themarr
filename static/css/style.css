@@ -77,3 +77,21 @@ select { background-image: none; }
 .range::-moz-range-track { height: 4px; border-radius: 2px; background: #26262f; }
 .range::-moz-range-progress { height: 4px; border-radius: 2px; background: #8b5cf6; }
 .range::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
+
+/* Background art (Settings > Display > Backdrops). The layer sits behind the scrolling page and fades in */
+.page-backdrop { position: absolute; inset: 0; overflow: hidden; pointer-events: none; opacity: 0; transition: opacity .6s ease; }
+.page-backdrop.on { opacity: 1; }
+.page-backdrop img { width: 100%; height: 100%; object-fit: cover; }
+.page-backdrop.media img { filter: blur(32px) saturate(1.2) brightness(.7); transform: scale(1.12); opacity: .22; }
+.page-backdrop.library img { opacity: .3; }
+.page-backdrop.library::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(20,20,24,.1), rgba(20,20,24,.9)); }
+
+/* Media page header: the art sharp on the right, fading left behind the title and down into the blurred layer */
+.hero-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 25%; filter: brightness(.8);
+  -webkit-mask-image: linear-gradient(to right, transparent 15%, rgba(0,0,0,.4) 50%, #000 85%), linear-gradient(to bottom, #000 55%, transparent);
+  -webkit-mask-composite: source-in; mask-image: linear-gradient(to right, transparent 15%, rgba(0,0,0,.4) 50%, #000 85%), linear-gradient(to bottom, #000 55%, transparent);
+  mask-composite: intersect; }
+.title-logo { max-height: 96px; max-width: min(420px, 100%); object-fit: contain; object-position: left bottom; filter: drop-shadow(0 2px 8px rgba(0,0,0,.6)); }
+
+/* Cards over the art let it show through a little */
+.over-art .card { background: rgba(31,31,38,.78); backdrop-filter: blur(6px); }

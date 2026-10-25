@@ -28,21 +28,34 @@ App.pages.media = {
         const seasons = m.seasons;
         const mainTracks = m.tracks.filter(t => t.location_type.startsWith('Main Theme'));
         const pending = App.pendingFor(m.folder_path);
+        const wide = backdropUrl(m);
+        const logo = logoUrl(m);
         const art = posterUrl(m);
-        const backdrop = art ? `<img src="${art}" alt="" class="absolute inset-0 w-full h-full object-cover opacity-20 blur-2xl scale-110" onerror="this.remove()">` : '';
+        // With background art: the image sharp at the top, fading into the same image blurred behind the tracks.
+        // Without it: the poster blurred, as before
+        const backdrop = wide
+            ? `<img src="${wide}" alt="" class="hero-art" onerror="this.remove()">`
+            : art ? `<img src="${art}" alt="" class="absolute inset-0 w-full h-full object-cover opacity-20 blur-2xl scale-110" onerror="this.remove()">` : '';
+        const year = jf?.year ? ` <span class="text-faint font-normal">(${jf.year})</span>` : '';
+        // A logo that fails to load gives its place back to the name
+        const title = logo
+            ? `<h1 class="hidden text-2xl font-semibold truncate">${esc(mediaTitle(m))}${year}</h1>
+               <img src="${logo}" alt="${esc(mediaTitle(m))}" class="title-logo" onerror="this.previousElementSibling.classList.remove('hidden'); this.remove()">`
+            : `<h1 class="text-2xl font-semibold truncate ${wide ? 'drop-shadow-lg' : ''}">${esc(mediaTitle(m))}${year}</h1>`;
+        App.setBackdrop(wide);
 
         view.innerHTML = `
-            <div class="relative border-b border-line overflow-hidden">
+            <div class="relative overflow-hidden ${wide ? 'hero' : 'border-b border-line'}">
                 ${backdrop}
-                <div class="absolute inset-0 bg-gradient-to-b from-transparent to-page/80"></div>
-                <div class="relative px-6 pt-4 pb-6">
-                    <a href="#/library" class="inline-flex items-center gap-1 text-xs text-muted hover:text-ink mb-4">${icon('chevron-left', 'icon-sm')}Library</a>
-                    <div class="flex gap-6 items-end">
+                ${wide ? '' : '<div class="absolute inset-0 bg-gradient-to-b from-transparent to-page/80"></div>'}
+                <div class="relative px-6 pt-4 pb-6 ${wide ? 'min-h-[300px] flex flex-col' : ''}">
+                    <a href="#/library" class="inline-flex items-center gap-1 text-xs text-muted hover:text-ink mb-4 ${wide ? 'self-start' : ''}">${icon('chevron-left', 'icon-sm')}Library</a>
+                    <div class="flex gap-6 items-end ${wide ? 'mt-auto' : ''}">
                         <div class="w-[120px] flex-shrink-0 shadow-xl">${posterHtml(m, 'border border-white/10')}</div>
                         <div class="flex-1 min-w-0">
-                            <h1 class="text-2xl font-semibold truncate">${esc(mediaTitle(m))}${jf?.year ? ` <span class="text-faint font-normal">(${jf.year})</span>` : ''}</h1>
+                            ${title}
                             <div class="mt-1 text-muted text-xs flex flex-wrap items-center gap-x-3 gap-y-1">
-                                <span>${esc(m.library)}${seasons.length ? ` · ${seasons.length} season folder${seasons.length > 1 ? 's' : ''}` : ''}</span>
+                                <span>${esc(m.library)}${logo && jf?.year ? ` · ${jf.year}` : ''}${seasons.length ? ` · ${seasons.length} season folder${seasons.length > 1 ? 's' : ''}` : ''}</span>
                                 ${jf ? `<span class="flex items-center gap-1 text-accent-text">${icon('link', 'icon-sm')}Matched in Jellyfin</span>`
                                      : App.settings.jelly_check ? `<span class="flex items-center gap-1 text-faint" title="Covers and official names come from Jellyfin">${icon('unlink', 'icon-sm')}Not found in Jellyfin</span>` : ''}
                                 <span class="font-mono text-faint truncate" title="${esc(m.folder_path)}">${esc(m.folder_path)}</span>
@@ -56,7 +69,7 @@ App.pages.media = {
                     </div>
                 </div>
             </div>
-            <div class="px-6 py-5 space-y-4">
+            <div class="px-6 py-5 space-y-4 ${wide ? 'over-art' : ''}">
                 ${this.section('Main theme', 'Main Theme', mainTracks, pending, 'music',
                     mainTracks.length ? '' : 'Plays on the series or movie page in Jellyfin.')}
                 ${seasons.map(season => this.section(season, season,

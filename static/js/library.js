@@ -43,6 +43,11 @@ App.pages.library = {
 
         await App.loadLibrary();
         if (App.route.name !== 'library') return;
+        // Background art of a random media, a new one on each visit (a refresh keeps it), like the Jellyfin home
+        if (!document.getElementById('backdrop').dataset.url) {
+            const art = App.library.media.map(backdropUrl).filter(Boolean);
+            if (art.length) App.setBackdrop(art[Math.floor(Math.random() * art.length)], 'library');
+        }
         this.fillLibraryFilter();
         this.applyFilters();
     },

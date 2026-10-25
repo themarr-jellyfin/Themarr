@@ -183,6 +183,44 @@ function posterUrl(media) {
     return '';
 }
 
+// Wide background art: the Jellyfin backdrop, its thumb when there is no backdrop, then fanart.jpg and the like
+// saved in the media folder. Empty when Backdrops is off in Settings
+function backdropUrl(media) {
+    if (App.settings.show_backdrops === false) return '';
+    const jf = media.jellyfin;
+    if (jf?.backdrop) return `/api/jellyfin/image/${jf.id}?type=Backdrop&v=${encodeURIComponent(jf.backdrop)}`;
+    if (jf?.thumb) return `/api/jellyfin/image/${jf.id}?type=Thumb&v=${encodeURIComponent(jf.thumb)}`;
+    if (media.backdrop_version) return `/api/media/cover?path=${encodeURIComponent(media.folder_path)}&kind=backdrop&v=${media.backdrop_version}`;
+    return '';
+}
+
+// Title logo from Jellyfin or logo.png in the media folder, shown in place of the name on the media page
+function logoUrl(media) {
+    const jf = media.jellyfin;
+    if (jf?.logo) return `/api/jellyfin/image/${jf.id}?type=Logo&v=${encodeURIComponent(jf.logo)}`;
+    if (media.logo_version) return `/api/media/cover?path=${encodeURIComponent(media.folder_path)}&kind=logo&v=${media.logo_version}`;
+    return '';
+}
+
+// The art behind the whole page. style: 'media' (blurred and dark, under the track list) or 'library' (faint).
+// The image fades in once loaded, so a slow image never flashes half drawn
+App.setBackdrop = function (url, style = 'media') {
+    const layer = document.getElementById('backdrop');
+    if (layer.dataset.url === (url || '')) return;
+    layer.dataset.url = url || '';
+    layer.classList.remove('on');
+    if (!url) return;
+    const img = new Image();
+    img.onload = () => {
+        if (layer.dataset.url !== url) return;
+        layer.className = `page-backdrop ${style}`;
+        layer.replaceChildren(img);
+        requestAnimationFrame(() => layer.classList.add('on'));
+    };
+    img.alt = '';
+    img.src = url;
+};
+
 function mediaTitle(media) {
     return media.jellyfin?.name || media.media_name;
 }
@@ -454,6 +492,7 @@ App.render = function () {
         Player.stop();
         App.pages.addTheme?.close();
         document.getElementById('view').scrollTop = 0;
+        App.setBackdrop(null);
     }
     App.pages[page].render(document.getElementById('view'), arg);
     refreshIcons();

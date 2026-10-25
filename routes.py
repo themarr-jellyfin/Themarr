@@ -9,7 +9,7 @@ from werkzeug.exceptions import HTTPException
 from core.config import load_config, SERVER_MODE, MEDIA_ROOT, BACKUP_DIR, APP_VERSION
 from core import updates, backup
 from core.safety import UnsafeMediaOperation, check_media_read, check_theme_write, is_theme_file
-from api_controller import save_uploaded_backup, local_cover
+from api_controller import save_uploaded_backup, local_cover, LOCAL_COVER_NAMES, LOCAL_ART_NAMES
 
 PUBLIC_ENDPOINTS = {'login', 'static'}
 
@@ -162,7 +162,7 @@ def register_routes(app, api_system):
     def api_jellyfin_image(item_id):
         if not re.fullmatch(r'[0-9a-fA-F]{32}', item_id):
             return "Invalid item", 400
-        image = api_system.jellyfin_image(item_id)
+        image = api_system.jellyfin_image(item_id, request.args.get('type', 'Primary'))
         if not image:
             return "No image", 404
         response = make_response(image[0])
@@ -174,7 +174,9 @@ def register_routes(app, api_system):
     def api_media_cover():
         folder = request.args.get('path', '')
         check_media_read(folder or '.')
-        cover = local_cover(folder) if folder and os.path.isdir(folder) else None
+        # kind: backdrop or logo instead of the poster
+        names = LOCAL_ART_NAMES.get(request.args.get('kind'), LOCAL_COVER_NAMES)
+        cover = local_cover(folder, names) if folder and os.path.isdir(folder) else None
         if not cover:
             return "No cover", 404
         return send_file(cover, max_age=86400)

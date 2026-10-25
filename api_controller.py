@@ -8,7 +8,7 @@ import requests
 import subprocess
 import zipfile
 from datetime import datetime
-from mutagen.mp3 import MP3
+from mutagen.mp3 import MP3, MPEGInfo
 
 try:
     import webview
@@ -34,9 +34,16 @@ global_state = {
 
 LOCAL_COVER_NAMES = ["cover.jpg", "cover.png", "folder.jpg", "folder.png", "poster.jpg", "poster.png"]
 
-def local_cover(media_folder_path):
+# Wide background art and title logo, with the names Jellyfin and Kodi read from the media folder
+LOCAL_ART_NAMES = {
+    "backdrop": ["backdrop.jpg", "backdrop.png", "fanart.jpg", "fanart.png", "background.jpg", "background.png",
+                 "landscape.jpg", "landscape.png", "thumb.jpg", "thumb.png"],
+    "logo": ["logo.png", "clearlogo.png"],
+}
+
+def local_cover(media_folder_path, names=LOCAL_COVER_NAMES):
     """Artwork saved in the media folder (the names Jellyfin and other tools use), or None"""
-    for file_name in LOCAL_COVER_NAMES:
+    for file_name in names:
         path = os.path.join(media_folder_path, file_name)
         if os.path.isfile(path) and os.path.getsize(path) > 1024:
             return path
@@ -263,10 +270,24 @@ def _track_file_name(name):
 def _library_root(base_path):
     return os.path.dirname(base_path) if _is_single_media_folder(base_path) else base_path
 
+def _mp3_duration(file_path):
+    """Length of an MP3 in seconds. Skips the ID3 tag instead of parsing it: the embedded cover made reading
+    every track of the library take seconds, and the length is the same"""
+    with open(file_path, 'rb') as fh:
+        head = fh.read(10)
+        offset = 0
+        if len(head) == 10 and head[:3] == b'ID3':
+            offset = 10 + ((head[6] << 21) | (head[7] << 14) | (head[8] << 7) | head[9])
+        try:
+            return MPEGInfo(fh, offset).length
+        except Exception:
+            pass
+    return MP3(file_path).info.length
+
 def _track_entry(file_path, file_name, location_type, error_label):
     duration = 0.0
     try:
-        duration = MP3(file_path).info.length
+        duration = _mp3_duration(file_path)
     except Exception as e:
         print(f"[LIBRARY] Error reading {error_label}: {e}")
 
@@ -371,9 +392,12 @@ def _media_entry(media_path):
         print(f"[LIBRARY] Error reading subdirectories of {folder}: {e}")
 
     cover = local_cover(media_path)
-    # cover_version changes with the file, so the browser does not keep showing an old cover
+    # cover_version changes with the file, so the browser does not keep showing an old cover. 0: no such file
+    art = {kind: local_cover(media_path, names) for kind, names in LOCAL_ART_NAMES.items()}
     return {"media_name": folder, "folder_path": media_path, "tracks": tracks, "has_cover": bool(cover),
-            "cover_version": int(os.path.getmtime(cover)) if cover else 0}
+            "cover_version": int(os.path.getmtime(cover)) if cover else 0,
+            "backdrop_version": int(os.path.getmtime(art["backdrop"])) if art["backdrop"] else 0,
+            "logo_version": int(os.path.getmtime(art["logo"])) if art["logo"] else 0}
 
 # ----------------------------------------------------------------------
 # Download queue workers
@@ -634,9 +658,11 @@ class Api:
         item = match_media_folder(index, folder) if index else None
         if not item:
             return None
-        # image: tag of the Jellyfin poster, which changes when the poster is replaced there
+        # Tags of the Jellyfin images, which change when an image is replaced there. Empty: the item has none
+        tags = item.get("ImageTags") or {}
         return {"id": item.get("Id"), "name": item.get("Name"), "year": item.get("ProductionYear"), "type": item.get("Type"),
-                "image": (item.get("ImageTags") or {}).get("Primary", "")}
+                "image": tags.get("Primary", ""), "thumb": tags.get("Thumb", ""), "logo": tags.get("Logo", ""),
+                "backdrop": (item.get("BackdropImageTags") or [""])[0]}
 
     def library_overview(self, fresh=False):
         """Every media folder of every library folder, with its themes and its Jellyfin item. fresh: ask Jellyfin again"""
@@ -667,19 +693,26 @@ class Api:
                      jellyfin=self._jellyfin_info(self._jellyfin_index(), folder))
         return {"success": True, "media": entry}
 
-    def jellyfin_image(self, item_id):
-        """Poster of a Jellyfin item, fetched with the server's API key so the browser never needs it"""
+    # Size asked from Jellyfin for each image type: the poster of a grid, a full width background, a title logo
+    JELLYFIN_IMAGE_SIZES = {"Primary": {"maxHeight": 450, "quality": 90}, "Backdrop": {"maxWidth": 1920, "quality": 85},
+                            "Thumb": {"maxWidth": 1920, "quality": 85}, "Logo": {"maxWidth": 800}}
+
+    def jellyfin_image(self, item_id, kind="Primary"):
+        """Image of a Jellyfin item (poster, backdrop, thumb or logo), fetched with the server's API key so the
+        browser never needs it"""
         config = load_config()
+        if kind not in self.JELLYFIN_IMAGE_SIZES:
+            return None
         if not (config.get("jelly_check") and config.get("jelly_url") and config.get("jelly_api")):
             return None
         try:
-            res = requests.get(f"{config['jelly_url'].rstrip('/')}/Items/{item_id}/Images/Primary",
+            res = requests.get(f"{config['jelly_url'].rstrip('/')}/Items/{item_id}/Images/{kind}",
                                headers={"X-Emby-Token": config["jelly_api"]},
-                               params={"maxHeight": 450, "quality": 90}, timeout=10)
+                               params=self.JELLYFIN_IMAGE_SIZES[kind], timeout=10)
             if res.status_code == 200 and res.headers.get('Content-Type', '').startswith('image/'):
                 return res.content, res.headers['Content-Type']
         except Exception as e:
-            print(f"[JELLYFIN] ⚠️ Could not load the poster of {item_id}: {e}")
+            print(f"[JELLYFIN] ⚠️ Could not load the {kind.lower()} image of {item_id}: {e}")
         return None
 
     def rename_track(self, file_path, new_name):

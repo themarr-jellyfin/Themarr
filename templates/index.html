@@ -33,7 +33,11 @@
         <div id="appVersion" class="label mt-auto mx-5 text-[11px] text-faint"></div>
     </nav>
 
-    <main id="view" class="flex-1 min-w-0 overflow-y-auto scroll"></main>
+    <div class="relative flex-1 min-w-0">
+        <!-- Background art behind the page (Settings > Display > Backdrops) -->
+        <div id="backdrop" class="page-backdrop"></div>
+        <main id="view" class="absolute inset-0 overflow-y-auto scroll"></main>
+    </div>
 </div>
 
 <!-- Add theme drawer -->

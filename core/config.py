@@ -78,6 +78,7 @@ def load_config():
         "open_browser": True,
         "library_folders": [],
         "check_updates": True,
+        "show_backdrops": True,
         "preview_volume": {"level": 1.0, "muted": False},
         "audio_fx": {
             "enabled": False,
