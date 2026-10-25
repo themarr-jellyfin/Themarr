@@ -23,13 +23,16 @@ It runs as a Windows desktop app or as a Docker container next to your Jellyfin 
 Jellyfin's own pages that opens the current series or movie in Themarr.
 
 <p align="center">
-  <img src="docs/images/screenshot-library.png" alt="Themarr library with a poster for each movie and how many themes it has" width="100%" />
+  <img src="docs/images/screenshot-library.png" alt="Themarr library with a poster for each movie and how many themes it has, over the backdrop of one of them" width="100%" />
+</p>
+<p align="center">
+  <img src="docs/images/screenshot-media.png" alt="Media page with the title logo and backdrop, and a theme playing with its seek bar and volume" width="100%" />
 </p>
 <p align="center">
   <img src="docs/images/screenshot-add-theme.png" alt="Add Theme panel: YouTube results, preview with start and end marks, name and destination" width="49%" />
   <img src="docs/images/screenshot-missing.png" alt="Missing page: media without a theme and the suggested YouTube results for each" width="49%" />
 </p>
-<p align="center"><sub>The films in the screenshots and their posters are in the public domain (posters from Wikimedia Commons).</sub></p>
+<p align="center"><sub>The films in the screenshots, their posters and stills are in the public domain (from Wikimedia Commons); the title logos are drawn with open fonts.</sub></p>
 
 > [!NOTE]
 > Looking for fully automatic themes from a shared database? See
