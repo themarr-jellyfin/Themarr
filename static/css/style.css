@@ -66,13 +66,14 @@ select { background-image: none; }
 
 .log-view { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
 
-/* Volume: short slider filled up to the level, same purple as the timeline */
+/* Sliders (volume and the seek bar of a playing track): filled up to --level, same purple as the timeline */
 .volume { display: flex; align-items: center; gap: 2px; }
-.volume input[type=range] { -webkit-appearance: none; appearance: none; width: 72px; height: 16px; background: transparent; cursor: pointer; --level: 100%; }
-.volume input[type=range]:focus { outline: none; }
-.volume input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, #8b5cf6 var(--level), #26262f var(--level)); }
-.volume input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; margin-top: -4px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.4); transition: transform .15s; }
-.volume input[type=range]:hover::-webkit-slider-thumb, .volume input[type=range]:focus-visible::-webkit-slider-thumb { transform: scale(1.2); }
-.volume input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: #26262f; }
-.volume input[type=range]::-moz-range-progress { height: 4px; border-radius: 2px; background: #8b5cf6; }
-.volume input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
+.volume .range { width: 72px; }
+.range { -webkit-appearance: none; appearance: none; width: 100%; height: 16px; background: transparent; cursor: pointer; --level: 100%; }
+.range:focus { outline: none; }
+.range::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, #8b5cf6 var(--level), #26262f var(--level)); }
+.range::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; margin-top: -4px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.4); transition: transform .15s; }
+.range:hover::-webkit-slider-thumb, .range:focus-visible::-webkit-slider-thumb { transform: scale(1.2); }
+.range::-moz-range-track { height: 4px; border-radius: 2px; background: #26262f; }
+.range::-moz-range-progress { height: 4px; border-radius: 2px; background: #8b5cf6; }
+.range::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.4); }

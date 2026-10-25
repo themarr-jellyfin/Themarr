@@ -306,7 +306,7 @@ const Volume = {
     html() {
         return `<div class="volume" data-volume>
             <button type="button" class="icon-btn p-1" data-mute>${icon('volume-2', 'icon-sm')}</button>
-            <input type="range" min="0" max="100" step="1" aria-label="Volume">
+            <input type="range" class="range" min="0" max="100" step="1" aria-label="Volume">
         </div>`;
     },
 

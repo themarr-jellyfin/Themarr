@@ -79,6 +79,7 @@ App.pages.media = {
         };
         view.querySelectorAll('[data-add]').forEach(button => button.onclick = () => App.pages.addTheme.open(m, button.dataset.add));
         view.querySelectorAll('[data-track]').forEach(row => this.bindTrack(row));
+        view.querySelectorAll('[data-volume]').forEach(el => Volume.bind(el));
         view.querySelectorAll('[data-queue-retry]').forEach(b => b.onclick = () => this.queueAction('retry', +b.dataset.queueRetry));
         view.querySelectorAll('[data-queue-remove]').forEach(b => b.onclick = () => this.queueAction('remove', +b.dataset.queueRemove));
         refreshIcons();
@@ -132,7 +133,11 @@ App.pages.media = {
                 <div class="px-4 py-2.5 flex items-center gap-3 group">
                     <button data-play class="w-8 h-8 rounded-full border border-line hover:border-accent hover:text-accent-text grid place-items-center flex-shrink-0" data-key="${esc(key)}">${icon('play', 'icon-sm')}</button>
                     <div class="flex-1 min-w-0">${title}
-                        <div data-progress class="hidden mt-1 h-0.5 bg-raised rounded"><div class="h-full bg-accent rounded" style="width:0%"></div></div>
+                        ${editing === 'trim' ? '' : `<div data-progress class="hidden mt-1 flex items-center gap-3">
+                            <input data-seek type="range" class="range flex-1 min-w-0" min="0" max="${track.duration || 0}" step="any" value="0" aria-label="Position" title="Drag to move. Arrow keys: 1 second">
+                            <span data-clock class="font-mono text-[11px] text-faint whitespace-nowrap">0:00 / ${fmtTime(track.duration)}</span>
+                            ${Volume.html()}
+                        </div>`}
                     </div>
                     <span class="text-xs text-faint font-mono w-12 text-right">${fmtTime(track.duration)}</span>
                     <div class="flex items-center gap-0.5">${actions}</div>
@@ -149,6 +154,7 @@ App.pages.media = {
                     <div class="flex items-center gap-3 pt-5">
                         <div class="flex-1">${Timeline.html()}</div>
                         <span data-trim-clock class="font-mono text-xs text-muted whitespace-nowrap">0:00.0 / ${fmtTimePrecise(track.duration)}</span>
+                        ${Volume.html()}
                     </div>
                     <div class="flex flex-wrap items-end gap-3">
                         <label class="text-xs text-muted space-y-1"><span class="block">Start</span>
@@ -188,6 +194,19 @@ App.pages.media = {
         const streamUrl = `/api/library/stream?path=${encodeURIComponent(path)}`;
 
         row.querySelector('[data-play]').onclick = () => Player.toggle(key, streamUrl);
+
+        // Seek bar of the playing track: while the thumb is held, playback does not pull it back
+        const seek = row.querySelector('[data-seek]');
+        if (seek) {
+            const release = () => { delete seek.dataset.dragging; };
+            seek.addEventListener('pointerdown', () => { seek.dataset.dragging = '1'; });
+            seek.addEventListener('pointerup', release);
+            seek.addEventListener('change', release);
+            seek.oninput = () => {
+                seek.style.setProperty('--level', `${(seek.value / (seek.max || 1)) * 100}%`);
+                Player.seekTo(key, streamUrl, Number(seek.value));
+            };
+        }
         row.querySelector('[data-trim]')?.addEventListener('click', () => this.setEditing(path, 'trim'));
         row.querySelector('[data-rename]')?.addEventListener('click', () => this.setEditing(path, 'rename'));
         row.querySelectorAll('[data-edit-cancel]').forEach(b => b.onclick = () => this.setEditing(null));
@@ -262,14 +281,25 @@ App.pages.media = {
                 button.classList.toggle('border-accent', playing);
                 refreshIcons();
             }
-            const progress = row.querySelector('[data-progress]');
             const active = Player.key === key;
-            const editor = row.querySelector('[data-trim-editor]');
-            progress.classList.toggle('hidden', !active || !!editor);
-            if (active && Player.el.duration) progress.firstElementChild.style.width = `${(Player.el.currentTime / Player.el.duration) * 100}%`;
+            const track = this.media.tracks.find(t => t.file_path === row.dataset.track);
+            const progress = row.querySelector('[data-progress]');
+            if (progress) {
+                progress.classList.toggle('hidden', !active);
+                if (active) {
+                    const seek = progress.querySelector('[data-seek]');
+                    const duration = Player.el.duration || track.duration || 0;
+                    if (!seek.dataset.dragging) {
+                        seek.max = duration;
+                        seek.value = Player.position(key);
+                    }
+                    seek.style.setProperty('--level', `${duration ? (seek.value / duration) * 100 : 0}%`);
+                    progress.querySelector('[data-clock]').textContent = `${fmtTime(Number(seek.value))} / ${fmtTime(duration)}`;
+                }
+            }
 
+            const editor = row.querySelector('[data-trim-editor]');
             if (editor) {
-                const track = this.media.tracks.find(t => t.file_path === row.dataset.track);
                 const duration = (active && Player.el.duration) || track.duration;
                 const current = Player.position(key);
                 Timeline.draw(editor.querySelector('[data-timeline]'), {
