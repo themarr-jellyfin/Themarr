@@ -28,7 +28,7 @@ App.pages.media = {
         const seasons = m.seasons;
         const mainTracks = m.tracks.filter(t => t.location_type.startsWith('Main Theme'));
         const pending = App.pendingFor(m.folder_path);
-        const art = jf?.id ? `/api/jellyfin/image/${jf.id}` : m.has_cover ? `/api/media/cover?path=${encodeURIComponent(m.folder_path)}` : '';
+        const art = posterUrl(m);
         const backdrop = art ? `<img src="${art}" alt="" class="absolute inset-0 w-full h-full object-cover opacity-20 blur-2xl scale-110" onerror="this.remove()">` : '';
 
         view.innerHTML = `
@@ -49,6 +49,7 @@ App.pages.media = {
                             </div>
                             <div class="mt-4 flex items-center gap-2">
                                 <button id="addThemeBtn" class="btn btn-primary">${icon('plus')}Add Theme</button>
+                                <button id="refreshScanBtn" class="btn" title="Read the name, poster and genres from Jellyfin again, fix the theme tags that changed and rescan this folder in Jellyfin">${icon('refresh-cw')}Refresh &amp; Scan</button>
                                 <button id="mediaMenuBtn" class="btn" title="More actions">${icon('ellipsis')}</button>
                             </div>
                         </div>
@@ -63,6 +64,7 @@ App.pages.media = {
             </div>`;
 
         view.querySelector('#addThemeBtn').onclick = () => App.pages.addTheme.open(m);
+        view.querySelector('#refreshScanBtn').onclick = () => App.mediaAction([m.folder_path], 'refresh', `'${mediaTitle(m)}'`);
         view.querySelector('#mediaMenuBtn').onclick = event => {
             event.stopPropagation();
             const folders = [m.folder_path];
@@ -70,7 +72,6 @@ App.pages.media = {
             showMenu(event.currentTarget, [
                 { label: 'Normalize all themes', icon: 'audio-lines', onClick: () => App.mediaAction(folders, 'normalize', name) },
                 { label: 'Apply audio effects', icon: 'wand-sparkles', onClick: () => App.mediaAction(folders, 'fx', name) },
-                { label: 'Re-tag all themes', icon: 'tag', onClick: () => App.mediaAction(folders, 'retag', name) },
                 { label: 'Organize into seasons', icon: 'folder-tree', onClick: () => App.mediaAction(folders, 'organize', name) },
                 'divider',
                 { label: 'Remove all themes...', icon: 'trash-2', danger: true, onClick: () => App.mediaAction(folders, 'remove', name) },
@@ -108,14 +109,22 @@ App.pages.media = {
             ? (track.file_name.toLowerCase() === 'theme.mp3' && track.location_type.endsWith('(Single)') ? 'theme.mp3' : `theme-music/${track.file_name}`)
             : `${track.location_type}/theme-music/${track.file_name}`;
 
+        // Edit: the name and, when the media has season folders, where the theme lives
+        const here = this.destinationOf(track);
+        const seasons = this.media.seasons.includes(here) || here === 'Main Theme' ? this.media.seasons : [here, ...this.media.seasons];
+        const folderSelect = this.media.seasons.length
+            ? `<select data-move-select class="field py-1 w-44" title="Move the theme to the main theme or a season">
+                   ${[['Main Theme', 'Main theme'], ...seasons.map(s => [s, s])].map(([value, label]) =>
+                       `<option value="${esc(value)}" ${value === here ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select>`
+            : '';
         const title = editing === 'rename'
-            ? `<input data-rename-input value="${esc(name)}" class="field py-1 w-full max-w-sm">`
+            ? `<div class="flex flex-wrap gap-2"><input data-rename-input value="${esc(name)}" class="field py-1 flex-1 min-w-[12rem] max-w-sm">${folderSelect}</div>`
             : `<div class="truncate">${esc(name)}</div><div class="text-[11px] text-faint truncate">${esc(where)}</div>`;
 
         const actions = editing === 'rename'
             ? `<button data-rename-save class="btn btn-primary py-1 text-xs">Save</button><button data-edit-cancel class="btn btn-ghost">Cancel</button>`
             : `<button data-trim class="icon-btn ${editing === 'trim' ? 'text-accent-text' : ''}" title="Trim">${icon('scissors')}</button>
-               <button data-rename class="icon-btn" title="Rename">${icon('pencil')}</button>
+               <button data-rename class="icon-btn" title="${this.media.seasons.length ? 'Rename or move' : 'Rename'}">${icon('pencil')}</button>
                <button data-more class="icon-btn" title="More">${icon('ellipsis-vertical')}</button>`;
 
         return `
@@ -195,13 +204,15 @@ App.pages.media = {
 
         const renameInput = row.querySelector('[data-rename-input]');
         if (renameInput) {
+            const moveSelect = row.querySelector('[data-move-select]');
+            const save = () => this.rename(track, renameInput.value, moveSelect?.value);
             renameInput.focus();
             renameInput.select();
-            renameInput.onkeydown = event => {
-                if (event.key === 'Enter') this.rename(track, renameInput.value);
+            [renameInput, moveSelect].filter(Boolean).forEach(field => field.onkeydown = event => {
+                if (event.key === 'Enter') save();
                 if (event.key === 'Escape') { event.stopPropagation(); this.setEditing(null); }
-            };
-            row.querySelector('[data-rename-save]').onclick = () => this.rename(track, renameInput.value);
+            });
+            row.querySelector('[data-rename-save]').onclick = save;
         }
 
         const editor = row.querySelector('[data-trim-editor]');
@@ -292,11 +303,20 @@ App.pages.media = {
         toast(result.success ? `Tags written to ${track.file_name}.` : (result.message || 'Could not write the tags.'), result.success ? 'success' : 'error');
     },
 
-    async rename(track, newName) {
+    // 'Main Theme' or the season folder, the same values the Add Theme destination uses
+    destinationOf(track) {
+        return track.location_type.startsWith('Main Theme') ? 'Main Theme' : track.location_type;
+    },
+
+    async rename(track, newName, destination) {
         if (!newName.trim()) return toast('Type a name for the track.', 'error');
         Player.stop();
-        const result = await api('/api/library/rename', { file_path: track.file_path, new_name: newName });
+        const moving = destination && destination !== this.destinationOf(track);
+        const result = moving
+            ? await api('/api/library/move', { file_path: track.file_path, destination, new_name: newName })
+            : await api('/api/library/rename', { file_path: track.file_path, new_name: newName });
         if (!result.success) return toast(result.message, 'error');
+        if (moving) toast(`${newName.trim()}: ${result.message}`, 'success');
         this.editing = null;
         App.library = null;
         await this.refresh();

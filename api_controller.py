@@ -42,19 +42,17 @@ def local_cover(media_folder_path):
             return path
     return None
 
-def process_folder_artwork(media_folder_path, media_folder_name, config, only_file=None):
+def process_folder_artwork(media_folder_path, media_folder_name, config, only_file=None, only_changed=False):
+    """Tags the theme files of a media folder: Jellyfin cover and names first, artwork in the folder as fallback.
+    only_changed: files whose tags already match stay untouched. Returns how many files were written"""
     print(f"\n[AUTOMATION] 🎬 Starting metadata processing for: {media_folder_name}")
-    
-    final_image_path = None
-    temp_image = False 
-    
-    final_genre = "" 
-    final_album_name = media_folder_name 
-    series_id = None
 
-    final_image_path = local_cover(media_folder_path)
-    if final_image_path:
-        print(f"[AUTOMATION] 🔍 Priority 2 Triggered: Local image found ({os.path.basename(final_image_path)})")
+    final_image_path = None
+    temp_image = False
+
+    final_genre = ""
+    final_album_name = media_folder_name
+    series_id = None
 
     jelly_url = config.get("jelly_url")
     jelly_api = config.get("jelly_api")
@@ -71,19 +69,22 @@ def process_folder_artwork(media_folder_path, media_folder_name, config, only_fi
             if final_genre:
                 print(f"[AUTOMATION] 🏷️ Genres found: {final_genre}")
             
-            if not final_image_path and search_result["image_url"]:
-                temp_folder = tempfile.gettempdir()
-                temp_file_name = f"temp_cover_{series_id}.jpg"
-                
+            # The poster shown in Jellyfin wins, so a cover changed there reaches the themes too
+            if search_result["image_url"]:
                 final_image_path = download_jellyfin_image(
                     image_url=search_result["image_url"],
                     api_key=jelly_api,
-                    dest_folder=temp_folder,
-                    file_name=temp_file_name
+                    dest_folder=tempfile.gettempdir(),
+                    file_name=f"temp_cover_{series_id}.jpg"
                 )
-                temp_image = True
+                temp_image = bool(final_image_path)
     else:
         print("[AUTOMATION] ⚠️ Jellyfin not configured/disabled. Skipping online search.")
+
+    if not final_image_path:
+        final_image_path = local_cover(media_folder_path)
+        if final_image_path:
+            print(f"[AUTOMATION] 🔍 Using the artwork in the folder ({os.path.basename(final_image_path)})")
 
     print("[AUTOMATION] 🚀 Scanning folder to apply metadata to MP3 files...")
     mp3_found = 0
@@ -132,10 +133,14 @@ def process_folder_artwork(media_folder_path, media_folder_name, config, only_fi
                     print(f"[JELLYFIN] ⚠️ Cover for Season {season_num} not found. Using main cover fallback.")
                     season_images_cache[season_num] = None
 
-        if inject_mp3_metadata(full_mp3_path, current_image_path, music_title, final_album_name, final_genre):
+        if inject_mp3_metadata(full_mp3_path, current_image_path, music_title, final_album_name, final_genre,
+                               only_if_changed=only_changed):
             mp3_found += 1
-                    
-    print(f"[AUTOMATION] ✨ Done! Metadata applied to {mp3_found} MP3 file(s).")
+
+    if only_changed and not mp3_found:
+        print("[AUTOMATION] ✨ Done! Tags were already up to date.")
+    else:
+        print(f"[AUTOMATION] ✨ Done! Metadata applied to {mp3_found} MP3 file(s).")
     
     if temp_image and final_image_path:
         try:
@@ -149,6 +154,7 @@ def process_folder_artwork(media_folder_path, media_folder_name, config, only_fi
                 os.remove(s_img)
             except Exception:
                 pass
+    return mp3_found
 
 UPLOAD_PREFIX = "themarr_upload_"
 
@@ -237,6 +243,23 @@ def _media_folder_of_track(file_path):
         return os.path.dirname(owner)
     return owner
 
+def _track_destination(file_path, media_folder):
+    """'Main Theme' or the season folder name that holds a theme track, in the terms the queue uses"""
+    parent = os.path.dirname(file_path)
+    if os.path.normcase(parent) == os.path.normcase(media_folder):
+        return 'Main Theme'
+    owner = os.path.dirname(parent)
+    return 'Main Theme' if os.path.normcase(owner) == os.path.normcase(media_folder) else os.path.basename(owner)
+
+def _track_file_name(name):
+    """File name for a theme track typed by the user: .mp3 added and characters Windows refuses replaced"""
+    name = (name or '').strip()
+    if not name.lower().endswith('.mp3'):
+        name += '.mp3'
+    for char in '|*?:"<>/\\':
+        name = name.replace(char, '-')
+    return name
+
 def _library_root(base_path):
     return os.path.dirname(base_path) if _is_single_media_folder(base_path) else base_path
 
@@ -301,6 +324,7 @@ MEDIA_ACTIONS = {
     "normalize": "Normalizing",
     "fx": "Applying audio effects to",
     "retag": "Writing tags for",
+    "refresh": "Refreshing",
     "organize": "Organizing",
     "remove": "Removing themes from",
 }
@@ -346,7 +370,10 @@ def _media_entry(media_path):
     except Exception as e:
         print(f"[LIBRARY] Error reading subdirectories of {folder}: {e}")
 
-    return {"media_name": folder, "folder_path": media_path, "tracks": tracks, "has_cover": bool(local_cover(media_path))}
+    cover = local_cover(media_path)
+    # cover_version changes with the file, so the browser does not keep showing an old cover
+    return {"media_name": folder, "folder_path": media_path, "tracks": tracks, "has_cover": bool(cover),
+            "cover_version": int(os.path.getmtime(cover)) if cover else 0}
 
 # ----------------------------------------------------------------------
 # Download queue workers
@@ -607,7 +634,9 @@ class Api:
         item = match_media_folder(index, folder) if index else None
         if not item:
             return None
-        return {"id": item.get("Id"), "name": item.get("Name"), "year": item.get("ProductionYear"), "type": item.get("Type")}
+        # image: tag of the Jellyfin poster, which changes when the poster is replaced there
+        return {"id": item.get("Id"), "name": item.get("Name"), "year": item.get("ProductionYear"), "type": item.get("Type"),
+                "image": (item.get("ImageTags") or {}).get("Primary", "")}
 
     def library_overview(self, fresh=False):
         """Every media folder of every library folder, with its themes and its Jellyfin item. fresh: ask Jellyfin again"""
@@ -655,11 +684,7 @@ class Api:
 
     def rename_track(self, file_path, new_name):
         """Renames a theme file (never over another one) and writes the new title tag"""
-        new_name = (new_name or '').strip()
-        if not new_name.lower().endswith('.mp3'):
-            new_name += '.mp3'
-        for char in '|*?:"<>/\\':
-            new_name = new_name.replace(char, '-')
+        new_name = _track_file_name(new_name)
         if not file_path or not os.path.isfile(file_path):
             return {"success": False, "message": "Track not found."}
         if new_name == '.mp3':
@@ -678,6 +703,55 @@ class Api:
 
         self.retag_track(new_path)
         return {"success": True, "file_path": new_path}
+
+    def move_track(self, file_path, destination, new_name=''):
+        """Moves a theme between the main theme and the season folders of its own media, optionally renaming it.
+        Never over another file and never out of the media"""
+        if not file_path or not os.path.isfile(file_path):
+            return {"success": False, "message": "Track not found."}
+        media_folder = _media_folder_of_track(file_path)
+        if not media_folder:
+            return {"success": False, "message": "This file is not in a theme folder."}
+        check_media_read(media_folder)
+        to_main = destination == 'Main Theme'
+        if not to_main and destination not in _list_season_folders(media_folder):
+            return {"success": False, "message": f"Season folder not found: {destination}"}
+
+        new_name = _track_file_name(new_name or os.path.splitext(os.path.basename(file_path))[0])
+        if new_name == '.mp3':
+            return {"success": False, "message": "Type a name for the track."}
+        if _track_destination(file_path, media_folder) == destination:
+            return self.rename_track(file_path, new_name)
+
+        target_folder = os.path.join(media_folder, 'theme-music') if to_main else os.path.join(media_folder, destination, 'theme-music')
+        target = os.path.join(target_folder, new_name)
+        loose_main = os.path.join(media_folder, 'theme.mp3')
+        place = 'Main theme' if to_main else destination
+        if os.path.exists(target) or (to_main and new_name.lower() == 'theme.mp3' and os.path.isfile(loose_main)):
+            return {"success": False, "message": f"A track named '{new_name}' already exists in {place}."}
+
+        check_theme_write(file_path, "move")
+        check_theme_write(target, "move")
+        os.makedirs(target_folder, exist_ok=True)
+        # Two main themes live in theme-music/, like after a download: the loose theme.mp3 goes in there first
+        if to_main and os.path.isfile(loose_main):
+            migrated = os.path.join(target_folder, 'theme.mp3')
+            check_theme_write(loose_main, "move")
+            check_theme_write(migrated, "move")
+            if safe_move(loose_main, migrated):
+                print("[LIBRARY] Moved 'theme.mp3' into 'theme-music' to hold more than one main theme.")
+        if not safe_move(file_path, target):
+            return {"success": False, "message": f"A track named '{new_name}' already exists in {place}."}
+
+        source_folder = os.path.dirname(file_path)
+        if os.path.basename(source_folder).lower() == 'theme-music' and not os.listdir(source_folder):
+            os.rmdir(source_folder)
+        print(f"[LIBRARY] Moved '{os.path.basename(file_path)}' to {place} as '{new_name}'.")
+
+        # The season cover goes into the tags, and Jellyfin picks the theme up in its new place
+        self.retag_track(target)
+        _start_background(_refresh_jellyfin, media_folder)
+        return {"success": True, "file_path": target, "message": f"Moved to {place}."}
 
     def retag_track(self, file_path):
         """Writes title, album, genres and cover into one theme file, without re-encoding the audio"""
@@ -719,6 +793,9 @@ class Api:
         changed = 0
         try:
             print(f"\n[TASK] {label} {len(folders)} media folder(s)...")
+            if action == 'refresh':
+                # Names, posters and folder matches read again from Jellyfin, not from the 10 minute cache
+                self._jellyfin_index(fresh=True)
             for i, folder in enumerate(folders):
                 name = os.path.basename(folder)
                 percentage = int(i / len(folders) * 100)
@@ -733,6 +810,11 @@ class Api:
                     if themes:
                         process_folder_artwork(folder, name, _artwork_config())
                         changed += len(themes)
+                elif action == 'refresh':
+                    # Tags only where Jellyfin changed something, then Jellyfin rescans the folder for moved or new themes
+                    if theme_files_in(folder):
+                        changed += process_folder_artwork(folder, name, _artwork_config(), only_changed=True)
+                    _refresh_jellyfin(folder)
                 else:
                     effects = config.get("audio_fx", {}) if action == 'fx' else {}
                     for mp3 in theme_files_in(folder):
@@ -740,7 +822,10 @@ class Api:
                         normalize_audio_ffmpeg(mp3, lufs, effects, normalize_enabled=(action == 'normalize'))
                         changed += 1
 
-            print(f"[TASK] Done: {label.lower()} finished ({changed} theme file(s)).\n")
+            if action == 'refresh':
+                print(f"[TASK] Done: refresh finished, tags updated in {changed} theme file(s).\n")
+            else:
+                print(f"[TASK] Done: {label.lower()} finished ({changed} theme file(s)).\n")
             global_state.update(percentage=100, statusText=f"{label} finished", percentageText=f"{len(folders)}/{len(folders)}")
         except Exception as e:
             print(f"\n[TASK] ❌ {label} stopped: {e}")

@@ -280,11 +280,36 @@ def download_music(youtube_url):
         mp3_file = os.path.splitext(base_filename)[0] + '.mp3'
     return mp3_file
 
-def inject_mp3_metadata(mp3_path, image_path, title, album, genre):
+def _cover_bytes(image_path):
+    """JPEG or PNG data of a cover image, or None when it is missing, tiny or not an image"""
+    if not (image_path and os.path.exists(image_path) and os.path.getsize(image_path) > 1024):
+        return None
+    with open(image_path, 'rb') as f:
+        data = f.read()
+    return data if data.startswith(b'\xff\xd8') or data.startswith(b'\x89PNG') else None
+
+def _tags_match(tags, image_path, title, album, genre):
+    """True when an MP3 already has this title, album, genre and cover"""
+    if tags is None:
+        return False
+    def text(key):
+        frame = tags.get(key)
+        return str(frame.text[0]) if frame and frame.text else ''
+    if text('TIT2') != title or text('TALB') != album or (genre and text('TCON') != genre):
+        return False
+    cover = _cover_bytes(image_path)
+    if cover is None:
+        return True
+    return [c.data for c in tags.getall('APIC')] == [cover]
+
+def inject_mp3_metadata(mp3_path, image_path, title, album, genre, only_if_changed=False):
+    """Writes title, album, genre and cover. only_if_changed: leaves the file alone (returns False) when they already match"""
     try:
         check_theme_write(mp3_path, "tag")
         audio = MP3(mp3_path, ID3=ID3)
-        
+        if only_if_changed and _tags_match(audio.tags, image_path, title, album, genre):
+            return False
+
         if audio.tags is None:
             try:
                 audio.add_tags()

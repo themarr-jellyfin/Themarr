@@ -220,6 +220,11 @@ def register_routes(app, api_system):
         data = body()
         return jsonify(api_system.rename_track(data.get('file_path', ''), data.get('new_name', '')))
 
+    @app.route('/api/library/move', methods=['POST'])
+    def move_library_track():
+        data = body()
+        return jsonify(api_system.move_track(data.get('file_path', ''), data.get('destination', ''), data.get('new_name', '')))
+
     @app.route('/api/library/retag', methods=['POST'])
     def retag_library_track():
         return jsonify(api_system.retag_track(body().get('file_path', '')))

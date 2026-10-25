@@ -173,7 +173,7 @@ App.pages.library = {
             <span class="w-px h-5 bg-line mx-1"></span>
             <button data-action="normalize" class="btn" ${count ? '' : 'disabled'} title="Level the loudness of every theme">${icon('audio-lines')}Normalize</button>
             <button data-action="fx" class="btn" ${count ? '' : 'disabled'} title="Apply the fades and silence removal from Settings">${icon('wand-sparkles')}Audio effects</button>
-            <button data-action="retag" class="btn" ${count ? '' : 'disabled'} title="Write title, names, genres and cover art">${icon('tag')}Re-tag</button>
+            <button data-action="refresh" class="btn" ${count ? '' : 'disabled'} title="Read names, posters and genres from Jellyfin again, fix the theme tags that changed and rescan the folders in Jellyfin">${icon('refresh-cw')}Refresh &amp; Scan</button>
             <button data-action="organize" class="btn" ${count ? '' : 'disabled'} title="Move loose episodes into a season folder">${icon('folder-tree')}Organize</button>
             <button data-action="remove" class="btn btn-danger ml-auto" ${count ? '' : 'disabled'}>${icon('trash-2')}Remove themes</button>
             <button id="massCancel" class="btn btn-ghost">Done</button>`;

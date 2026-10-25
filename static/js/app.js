@@ -168,12 +168,19 @@ function posterHtml(media, extraClass = '') {
     let hash = 0;
     for (const ch of media.media_name) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
     const color = POSTER_COLORS[hash % POSTER_COLORS.length];
-    // Jellyfin poster first, then artwork saved in the media folder (poster.jpg, folder.jpg, cover.jpg)
-    const src = media.jellyfin?.id ? `/api/jellyfin/image/${media.jellyfin.id}`
-        : media.has_cover ? `/api/media/cover?path=${encodeURIComponent(media.folder_path)}` : '';
+    const src = posterUrl(media);
     const image = src ? `<img src="${src}" alt="" loading="lazy" onerror="this.remove()">` : '';
     return `<div class="poster ${extraClass}" style="background: linear-gradient(160deg, ${color}, #14141c)">
         <span class="poster-letter">${esc(name.trim()[0] || '?')}</span>${image}</div>`;
+}
+
+// Jellyfin poster first, then artwork saved in the media folder (poster.jpg, folder.jpg, cover.jpg).
+// The version in the URL changes with the image, so a poster replaced in Jellyfin is not kept from the browser cache
+function posterUrl(media) {
+    const jf = media.jellyfin;
+    if (jf?.id) return `/api/jellyfin/image/${jf.id}?v=${encodeURIComponent(jf.image || '')}`;
+    if (media.has_cover) return `/api/media/cover?path=${encodeURIComponent(media.folder_path)}&v=${media.cover_version || 0}`;
+    return '';
 }
 
 function mediaTitle(media) {
@@ -413,7 +420,7 @@ App.saveSettings = async function (changes) {
 };
 
 App.mediaAction = async function (folders, action, describe) {
-    const labels = { normalize: 'normalize', fx: 'apply audio effects to', retag: 're-tag', organize: 'organize', remove: 'remove themes from' };
+    const labels = { normalize: 'normalize', fx: 'apply audio effects to', retag: 're-tag', refresh: 'refresh', organize: 'organize', remove: 'remove themes from' };
     if (action === 'remove') {
         const ok = await confirmDialog({
             title: 'Remove themes',
