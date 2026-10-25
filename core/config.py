@@ -11,7 +11,7 @@ def get_base_path():
     # Running as script
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-APP_VERSION = "1.14.1"
+APP_VERSION = "1.14.2"
 
 APP_ROOT_DIR = get_base_path()
 # Files bundled by PyInstaller (templates, static, jellyfin) live in _internal next to the exe
