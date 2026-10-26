@@ -70,6 +70,18 @@ App.pages.settings = {
                 </section>
 
                 <section class="card">
+                    <div class="px-5 py-3 border-b border-line"><h2 class="font-medium">Sources</h2>
+                        <p class="text-xs text-faint mt-0.5">Where Themarr finds themes besides the YouTube search.</p></div>
+                    <div class="p-5 grid grid-cols-[180px_1fr] gap-x-6 gap-y-4 items-start max-[700px]:grid-cols-1">
+                        <label class="text-muted" for="setThemerrDB">ThemerrDB</label>
+                        <div>
+                            <label class="flex items-center gap-2 text-xs"><input id="setThemerrDB" type="checkbox" class="w-4 h-4" ${s.use_themerrdb !== false ? 'checked' : ''}>Suggest the community pick for each movie and show</label>
+                            <p class="text-[11px] text-faint mt-1"><a href="https://github.com/LizardByte/ThemerrDB" target="_blank" rel="noopener" class="text-accent-text hover:underline">ThemerrDB</a> is a shared list of themes by the LizardByte project. Its pick shows first in Add Theme and on the Missing page. Needs a TMDB or IMDb id, from Jellyfin or from the folder name, like <span class="font-mono">Movie (1999) [tmdbid-603]</span>.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="card">
                     <div class="px-5 py-3 border-b border-line"><h2 class="font-medium">Display</h2>
                         <p class="text-xs text-faint mt-0.5">Artwork from Jellyfin, or saved in the media folder (fanart.jpg, logo.png).</p></div>
                     <div class="p-5 grid grid-cols-[180px_1fr] gap-x-6 gap-y-4 items-center max-[700px]:grid-cols-1">
@@ -260,6 +272,13 @@ docker compose up -d --build</pre>
         };
 
         $('setBackdrops').onchange = event => App.saveSettings({ show_backdrops: event.target.checked });
+        $('setThemerrDB').onchange = event => {
+            App.saveSettings({ use_themerrdb: event.target.checked });
+            // Suggestions already loaded were made with the old setting
+            App.pages.addTheme.suggestedCache.clear();
+            App.pages.missing.suggestions.clear();
+            App.pages.missing.picks.clear();
+        };
 
         const openBrowser = $('setOpenBrowser');
         if (openBrowser) openBrowser.onchange = () => App.saveSettings({ open_browser: openBrowser.checked });

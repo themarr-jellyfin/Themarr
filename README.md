@@ -15,7 +15,8 @@
 Jellyfin plays a theme song while you browse a series or movie, as long as the media folder has a
 `theme.mp3` or a `theme-music/` folder. Themarr is a web app that builds those files for you.
 
-You pick the music. Themarr searches YouTube, lets you preview and cut the exact part you want, normalizes the
+You pick the music. Themarr suggests the community pick from [ThemerrDB](https://github.com/LizardByte/ThemerrDB)
+when there is one, searches YouTube, lets you preview and cut the exact part you want, normalizes the
 volume so every show plays at the same level, embeds the cover and the official title from Jellyfin, and saves
 the file where Jellyfin expects it. Shows with a different opening per season get one theme per season folder.
 
@@ -37,11 +38,15 @@ Jellyfin's own pages that opens the current series or movie in Themarr.
 > [!NOTE]
 > Looking for fully automatic themes from a shared database? See
 > [Themerr](https://github.com/LizardByte/Themerr). Themarr is the hands-on alternative: you choose each track,
-> which suits media with several openings or a different theme per season.
+> which suits media with several openings or a different theme per season. Its database,
+> [ThemerrDB](https://github.com/LizardByte/ThemerrDB), is where Themarr's suggestions come from.
 
 ## Features
 
 **Finding and downloading**
+- Suggested theme from [ThemerrDB](https://github.com/LizardByte/ThemerrDB), a community list with one theme
+  per movie and TV show, found by the TMDB or IMDb id from Jellyfin or from the folder name
+  (`Movie (1999) [tmdbid-603]`). It can be turned off in Settings.
 - YouTube search inside the app, or paste a link. Listen to the result before downloading anything.
 - Mark where the theme starts and ends while it plays, name it, and choose where it goes: the main theme or a
   season.
@@ -63,7 +68,8 @@ Jellyfin's own pages that opens the current series or movie in Themarr.
 - Every series and movie of your libraries as posters or a table, with how many themes each one has. Posters
   come from Jellyfin, or from a `poster.jpg`, `folder.jpg` or `cover.jpg` in the media folder.
 - A page per media with its themes, main and per season: play, trim, rename, re-normalize, re-tag or delete.
-- Missing: the media with no theme yet, each with the top YouTube results to pick from.
+- Missing: the media with no theme yet, each with the ThemerrDB pick (already selected when there is one) and
+  the top YouTube results to pick from.
 - Bulk actions on a selection: normalize, audio effects, re-tag, organize, remove themes.
 - Organize creates a season folder and moves loose episode and subtitle files into it, never overwriting
   anything.
@@ -170,9 +176,13 @@ processing, [Mutagen](https://github.com/quodlibet/mutagen) for tags, [Flask](ht
 and [Waitress](https://github.com/Pylons/waitress) for the web server, and
 [pywebview](https://github.com/r0x0r/pywebview) for the desktop window.
 
+Theme suggestions come from [ThemerrDB](https://github.com/LizardByte/ThemerrDB), maintained by
+[LizardByte](https://github.com/LizardByte) and its contributors, who pick a theme for each title by hand.
+Thank you. If a pick is missing or wrong, it can be fixed there, and every app that uses the list gets it.
+
 ## License
 
 Themarr is free software under the [GNU General Public License v3.0](LICENSE).
 
-Themarr is not affiliated with or endorsed by the Jellyfin project or YouTube. You are responsible for making
+Themarr is not affiliated with or endorsed by the Jellyfin project, LizardByte or YouTube. You are responsible for making
 sure your use of downloaded audio complies with its terms and with the copyright laws where you live.

@@ -22,6 +22,7 @@ from core.audio import download_music, normalize_and_save, normalize_audio_ffmpe
 from core.jellyfin import fetch_jellyfin_data, download_jellyfin_image, fetch_jellyfin_season_image, find_jellyfin_item, get_library_index, match_media_folder, local_media_folder, install_jellyfin_buttons, refresh_jellyfin_media
 from core.files import generate_destination_path, move_loose_episodes, clean_search_name, safe_move
 from core.jobs import ThemeQueue
+from core.sources import themerrdb_theme, ids_from_folder_name, ids_from_jellyfin, guess_media_kind, youtube_video_id
 from core import backup
 
 global_state = {
@@ -1278,6 +1279,32 @@ class Api:
             print(f"[ASSISTANT] Error getting search query for {folder_name}: {e}")
             return {"success": False, "message": str(e)}
 
+    def get_suggested_theme(self, folder_name, folder_path=None):
+        """The ThemerrDB theme of a media, or None. Ids come from the folder name tags, then from the Jellyfin item
+        whose folder is exactly this one (a name search could land on another title, so it is not used here)"""
+        config = self.get_settings()
+        if config.get("use_themerrdb") is False:
+            return None
+
+        ids = ids_from_folder_name(folder_name)
+        kind = None
+        if config.get("jelly_check") and config.get("jelly_url") and config.get("jelly_api"):
+            item = match_media_folder(get_library_index(config["jelly_url"], config["jelly_api"]), folder_path or folder_name)
+            if item:
+                kind = "movie" if item.get("Type") == "Movie" else "tv"
+                ids = {**ids_from_jellyfin(item.get("ProviderIds")), **ids}
+        if not ids:
+            return None
+        if not kind:
+            seasons = _list_season_folders(folder_path) if folder_path and os.path.isdir(folder_path) else []
+            kind = guess_media_kind(folder_path, seasons) if folder_path else "movie"
+
+        try:
+            return themerrdb_theme(kind, ids)
+        except Exception as e:
+            print(f"[THEMERRDB] Lookup failed for {folder_name}: {e}")
+            return None
+
     def get_media_theme_suggestions(self, folder_name, folder_path=None):
         try:
             meta = self.get_assistant_search_query(folder_name, folder_path)
@@ -1287,7 +1314,13 @@ class Api:
             query = meta["search_query"]
             yt_results = self.search_youtube(query)
             top_results = yt_results[:3] if yt_results else []
-            
+
+            # The ThemerrDB pick goes first, so it is the one already selected on the Missing page
+            suggested = self.get_suggested_theme(folder_name, folder_path)
+            if suggested:
+                top_results = [suggested] + [r for r in top_results
+                                             if youtube_video_id(r.get('url')) != youtube_video_id(suggested['url'])][:3]
+
             return {
                 "success": True,
                 "folder_name": folder_name,

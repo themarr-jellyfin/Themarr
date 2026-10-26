@@ -1,10 +1,12 @@
-// Add Theme drawer: search YouTube (or paste a link), listen, trim, name it, choose where it goes, queue it.
+// Add Theme drawer: the ThemerrDB pick when there is one, then search YouTube (or paste a link), listen, trim,
+// name it, choose where it goes, queue it.
 // Nothing is downloaded until "Add to queue": the preview streams straight from YouTube.
 
 App.pages.addTheme = {
     media: null,
     results: [],
     shown: 0,
+    suggested: null,    // ThemerrDB pick for this media, shown above the search results
     choice: null,       // { url, title, channel, duration, thumbnail }
     stream: null,       // { url, duration }
     loadingStream: false,
@@ -17,6 +19,7 @@ App.pages.addTheme = {
         this.results = [];
         this.shown = 0;
         this.lastQuery = '';
+        this.suggested = null;
         this.choice = null;
         this.stream = null;
         this.destination = destination;
@@ -34,6 +37,7 @@ App.pages.addTheme = {
                     <button class="absolute right-1.5 top-1/2 -translate-y-1/2 btn py-1">Search</button>
                 </div>
             </form>
+            <div id="atSuggested" class="hidden px-5 pt-3"></div>
             <div id="atResults" class="flex-1 overflow-y-auto scroll px-5 py-3 space-y-1"></div>
             <div id="atSelected" class="hidden border-t border-line bg-surface px-5 py-4 space-y-4"></div>
             <div class="px-5 py-3 border-t border-line flex items-center justify-end gap-2">
@@ -65,6 +69,7 @@ App.pages.addTheme = {
         drawer.classList.remove('translate-x-full');
         refreshIcons();
 
+        this.loadSuggested(media);
         const saved = this.memory.get(media.folder_path);
         if (saved) {
             drawer.querySelector('#atQuery').value = saved.query;
@@ -76,6 +81,40 @@ App.pages.addTheme = {
         const season = destination !== 'Main Theme' ? ` ${destination.replace(/^season\s*0*(\d+).*$/i, 'season $1')}` : '';
         drawer.querySelector('#atQuery').value = `${mediaTitle(media)}${season} opening theme`;
         this.search();
+    },
+
+    // Asked once per media while the app is open: the answer only changes when ThemerrDB publishes, once a day
+    suggestedCache: new Map(),
+
+    async loadSuggested(media) {
+        let suggestion = this.suggestedCache.get(media.folder_path);
+        if (suggestion === undefined) {
+            const result = await api('/api/sources/suggested', { folder_path: media.folder_path, folder_name: media.media_name })
+                .catch(() => ({}));
+            suggestion = result.success ? result.suggestion : null;
+            if (result.success) this.suggestedCache.set(media.folder_path, suggestion);
+        }
+        if (this.media !== media) return;
+        this.suggested = suggestion;
+        this.drawSuggested();
+    },
+
+    drawSuggested() {
+        const box = document.getElementById('atSuggested');
+        if (!box) return;
+        const r = this.suggested;
+        box.classList.toggle('hidden', !r);
+        if (!r) return box.innerHTML = '';
+        box.innerHTML = `
+            <div class="text-[11px] uppercase tracking-wide text-faint mb-1.5">Suggested</div>
+            <button data-suggested class="w-full text-left flex gap-3 p-2 rounded-md border border-line ${this.choice?.url === r.url ? 'bg-accent-soft ring-1 ring-accent' : 'hover:bg-surface'}">
+                <div class="w-28 aspect-video rounded bg-raised flex-shrink-0 overflow-hidden">
+                    ${r.thumbnail ? `<img src="${esc(r.thumbnail)}" alt="" class="w-full h-full object-cover">` : ''}
+                </div>
+                <div class="min-w-0"><div class="text-[13px] leading-snug line-clamp-2">${esc(r.title)}</div>
+                    <div class="text-[11px] text-faint mt-1 flex items-center gap-1.5 flex-wrap">${sourceBadge(r)}<span>${resultInfo(r)}</span></div></div>
+            </button>`;
+        box.querySelector('[data-suggested]').onclick = () => this.select(r);
     },
 
     remember() {
@@ -129,6 +168,7 @@ App.pages.addTheme = {
     drawResults() {
         const list = document.getElementById('atResults');
         if (!list) return;
+        this.drawSuggested();
         if (!this.results.length) {
             list.innerHTML = `<div class="py-10 text-center text-faint">No results. Try other words, or paste a YouTube link.</div>`;
             return;

@@ -70,7 +70,7 @@ def get_library_index(jellyfin_url, api_key, force_refresh=False):
             res = requests.get(
                 f"{clean_url}/Items",
                 headers={"X-Emby-Token": api_key},
-                params={"IncludeItemTypes": "Series,Movie", "Recursive": "true", "Fields": "Path,Genres"},
+                params={"IncludeItemTypes": "Series,Movie", "Recursive": "true", "Fields": "Path,Genres,ProviderIds"},
                 timeout=20
             )
             if res.status_code != 200:

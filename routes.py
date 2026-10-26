@@ -258,7 +258,18 @@ def register_routes(app, api_system):
     @app.route('/api/library/assistant/suggestions', methods=['POST'])
     def api_assistant_suggestions():
         data = body()
+        if data.get('folder_path'):
+            check_media_read(data['folder_path'])
         return jsonify(api_system.get_media_theme_suggestions(data.get('folder_name', ''), data.get('folder_path')))
+
+    @app.route('/api/sources/suggested', methods=['POST'])
+    def api_suggested_theme():
+        data = body()
+        folder_path = data.get('folder_path') or ''
+        if folder_path:
+            check_media_read(folder_path)
+        theme = api_system.get_suggested_theme(data.get('folder_name') or os.path.basename(folder_path), folder_path or None)
+        return jsonify({"success": True, "suggestion": theme})
 
     # ---------------- Queue and activity ----------------
     @app.route('/api/queue', methods=['GET'])

@@ -79,6 +79,7 @@ def load_config():
         "library_folders": [],
         "check_updates": True,
         "show_backdrops": True,
+        "use_themerrdb": True,
         "preview_volume": {"level": 1.0, "muted": False},
         "audio_fx": {
             "enabled": False,

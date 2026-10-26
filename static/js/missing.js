@@ -1,4 +1,5 @@
-// Missing page: media with no theme yet, with the top YouTube results for each (the old Theme Assistant)
+// Missing page: media with no theme yet, with the ThemerrDB pick (when there is one) and the top YouTube results
+// for each (the old Theme Assistant)
 
 App.pages.missing = {
     suggestions: new Map(),   // folder_path -> { loading, official_name, items: [] }
@@ -65,7 +66,7 @@ App.pages.missing = {
                                 ${r.thumbnail ? `<img src="${esc(r.thumbnail)}" alt="" loading="lazy" class="w-full h-full object-cover">` : ''}
                                 <button type="button" data-preview="${i}" class="absolute inset-0 grid place-items-center text-white/90 hover:text-white bg-black/30 hover:bg-black/10" title="Listen">${icon('play')}</button>
                             </div>
-                            <div class="min-w-0 text-[12px] leading-snug"><div class="line-clamp-2">${esc(r.title)}</div><div class="text-[11px] text-faint mt-0.5">${esc(r.duration)} · ${esc(r.channel)}</div></div>
+                            <div class="min-w-0 text-[12px] leading-snug"><div class="line-clamp-2">${esc(r.title)}</div><div class="text-[11px] text-faint mt-0.5 flex items-center gap-1.5 flex-wrap">${sourceBadge(r)}<span>${resultInfo(r)}</span></div></div>
                         </label>`).join('')}
                     <label class="flex items-center gap-2.5 p-2 rounded-md cursor-pointer text-xs text-muted ${pick === -1 ? 'bg-raised' : 'hover:bg-raised'}">
                         <input type="radio" name="pick-${esc(folder)}" value="-1" ${pick === -1 ? 'checked' : ''}>Skip this one

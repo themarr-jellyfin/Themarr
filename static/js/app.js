@@ -26,6 +26,17 @@ function icon(name, cls = '') {
     return `<i data-lucide="${name}" class="${cls}"></i>`;
 }
 
+// Small tag naming where a suggestion came from; plain YouTube search results have none
+function sourceBadge(result) {
+    if (result?.source !== 'themerrdb') return '';
+    return `<span class="inline-block align-middle text-[10px] leading-4 px-1.5 rounded bg-accent-soft text-accent-text font-medium" title="Community pick from ThemerrDB">ThemerrDB</span>`;
+}
+
+// "1:32 · Channel", leaving out what is unknown (ThemerrDB picks come without a duration)
+function resultInfo(result) {
+    return [result.duration, result.channel].filter(Boolean).map(esc).join(' · ');
+}
+
 function refreshIcons() {
     if (window.lucide) lucide.createIcons();
 }
@@ -221,8 +232,11 @@ App.setBackdrop = function (url, style = 'media') {
     img.src = url;
 };
 
+// Id tags in folder names ([tmdbid-603], {imdb-tt0133093}) are for the apps, not for reading
 function mediaTitle(media) {
-    return media.jellyfin?.name || media.media_name;
+    return media.jellyfin?.name
+        || media.media_name.replace(/\s*[\[{](tmdb|tvdb|imdb)(id)?[-=][^\]}]*[\]}]/gi, '').trim()
+        || media.media_name;
 }
 
 // ---------------------------------------------------------------------------
