@@ -7,7 +7,7 @@
 <body class="bg-page text-ink h-screen overflow-hidden flex flex-col text-sm">
 
 <header class="h-14 flex-shrink-0 bg-side border-b border-line flex items-center gap-4 px-4">
-    <a href="#/library" class="flex items-center gap-2.5 w-[184px] max-[1000px]:w-auto">
+    <a href="#/library" class="brand flex items-center gap-2.5">
         <img src="{{ url_for('static', filename='favicon.ico') }}" alt="" class="w-8 h-8 rounded-full">
         <span class="text-[17px] font-semibold tracking-wide max-[1000px]:hidden">Themarr</span>
     </a>
@@ -25,7 +25,8 @@
 </header>
 
 <div class="flex flex-1 min-h-0">
-    <nav class="sidebar w-[200px] flex-shrink-0 bg-side border-r border-line py-3 flex flex-col gap-0.5">
+    <nav class="sidebar relative flex-shrink-0 bg-side border-r border-line py-3 flex flex-col gap-0.5">
+        <div data-resize="sidebar" class="resize-handle -right-1"></div>
         <a class="nav-item" data-nav="library" href="#/library" title="Library"><i data-lucide="library"></i><span class="label flex-1">Library</span></a>
         <a class="nav-item" data-nav="missing" href="#/missing" title="Missing"><i data-lucide="circle-dashed"></i><span class="label flex-1">Missing</span><span id="navMissingCount" class="label hidden text-[11px] bg-raised text-muted rounded px-1.5"></span></a>
         <a class="nav-item" data-nav="activity" href="#/activity" title="Activity"><i data-lucide="activity"></i><span class="label flex-1">Activity</span><span id="navQueueCount" class="label hidden text-[11px] bg-accent text-white rounded px-1.5"></span></a>
@@ -42,7 +43,7 @@
 
 <!-- Add theme drawer -->
 <div id="drawerOverlay" class="hidden fixed inset-0 bg-black/60 z-30"></div>
-<aside id="drawer" class="fixed top-0 right-0 h-full w-[560px] max-w-full bg-side border-l border-line z-40 translate-x-full transition-transform duration-200 flex flex-col"></aside>
+<aside id="drawer" class="fixed top-0 right-0 h-full drawer bg-side border-l border-line z-40 translate-x-full transition-transform duration-200 flex flex-col"></aside>
 <!-- The drawer minimized: a tab on the right edge that brings it back as it was -->
 <div id="drawerTab" class="hidden fixed right-0 top-1/2 -translate-y-1/2 z-40 w-10 flex flex-col items-center gap-2 py-3 bg-side border border-r-0 border-line rounded-l-lg shadow-2xl cursor-pointer hover:bg-surface transition-colors"></div>
 

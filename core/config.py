@@ -82,6 +82,7 @@ def load_config():
         "use_themerrdb": True,
         "search_source": "youtube",
         "preview_volume": {"level": 1.0, "muted": False},
+        "panel_sizes": {"sidebar": 200, "drawer": 560},
         "audio_fx": {
             "enabled": False,
             "remove_silence": False,

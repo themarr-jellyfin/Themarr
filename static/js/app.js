@@ -395,7 +395,76 @@ const Volume = {
 };
 
 // ---------------------------------------------------------------------------
-// Timeline: the seek bar used to trim (Add Theme preview and the trim editor of a track).
+// Resizer: the left menu and the Add Theme panel get wider or narrower by dragging their edge.
+// Dragging the menu well past its minimum leaves only the icons. Double-click goes back to the default size.
+// The sizes are saved in the settings, like the volume.
+// ---------------------------------------------------------------------------
+const Resizer = {
+    panels: {
+        sidebar: { variable: '--sidebar-w', normal: 200, min: 160, max: 360, collapsed: 56, edge: 'right' },
+        drawer: { variable: '--drawer-w', normal: 560, min: 440, max: 1100, edge: 'left' },
+    },
+    sizes: {},
+
+    restore(saved) {
+        Object.keys(this.panels).forEach(name => this.apply(name, this.fit(name, Number(saved?.[name]) || this.panels[name].normal)));
+    },
+
+    apply(name, width) {
+        const panel = this.panels[name];
+        this.sizes[name] = width;
+        document.documentElement.style.setProperty(panel.variable, `${width}px`);
+        if (name === 'sidebar') document.body.classList.toggle('sidebar-collapsed', width === panel.collapsed);
+    },
+
+    fit(name, width) {
+        const panel = this.panels[name];
+        if (panel.collapsed && width < (panel.min + panel.collapsed) / 2) return panel.collapsed;
+        return Math.round(Math.min(panel.max, Math.max(panel.min, width)));
+    },
+
+    bind(handle, name) {
+        const panel = this.panels[name];
+        handle.tabIndex = 0;
+        handle.setAttribute('role', 'separator');
+        handle.setAttribute('aria-orientation', 'vertical');
+        handle.title = 'Drag to resize. Double-click for the default size';
+        // The edge on the right grows to the right; the panel that opens from the right grows to the left
+        const toward = dx => panel.edge === 'right' ? dx : -dx;
+        handle.onpointerdown = event => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            handle.setPointerCapture(event.pointerId);
+            const startX = event.clientX;
+            const startWidth = this.sizes[name];
+            handle.classList.add('dragging');
+            document.body.classList.add('resizing');
+            handle.onpointermove = e => this.apply(name, this.fit(name, startWidth + toward(e.clientX - startX)));
+            handle.onpointerup = handle.onpointercancel = () => {
+                handle.onpointermove = handle.onpointerup = handle.onpointercancel = null;
+                handle.classList.remove('dragging');
+                document.body.classList.remove('resizing');
+                if (this.sizes[name] !== startWidth) this.save();
+            };
+        };
+        handle.ondblclick = () => { this.apply(name, panel.normal); this.save(); };
+        handle.onkeydown = event => {
+            const step = { ArrowLeft: -16, ArrowRight: 16 }[event.key];
+            if (!step) return;
+            event.preventDefault();
+            this.apply(name, this.fit(name, this.sizes[name] + toward(step)));
+            this.save();
+        };
+    },
+
+    save() {
+        clearTimeout(this.saveTimer);
+        this.saveTimer = setTimeout(() => App.saveSettings({ panel_sizes: { ...this.sizes } }), 400);
+    },
+};
+
+// ---------------------------------------------------------------------------
+// Timeline:the seek bar used to trim (Add Theme preview and the trim editor of a track).
 // Click or drag to move, hover shows the time under the mouse, arrow keys move 1 s.
 // ---------------------------------------------------------------------------
 const Timeline = {
@@ -656,6 +725,8 @@ App.start = async function () {
     App.info = info;
     App.settings = settings;
     Player.restoreVolume(settings.preview_volume);
+    Resizer.restore(settings.panel_sizes);
+    Resizer.bind(document.querySelector('[data-resize="sidebar"]'), 'sidebar');
     document.getElementById('appVersion').textContent = `v${info.version}`;
 
     document.getElementById('refreshBtn').onclick = () => App.refresh();

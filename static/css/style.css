@@ -47,12 +47,27 @@ select { background-image: none; }
 .nav-item:hover { color: #e7e7ec; background: #26262f; }
 .nav-item.active { background: rgba(139,92,246,.14); color: #ddd6fe; }
 
-/* Sidebar shows only icons on narrow windows (the desktop app) */
+/* Panel widths, dragged on their edge (Resizer in app.js). The sidebar shows only icons when dragged narrow
+   and always on narrow windows (the desktop app) */
+:root { --sidebar-w: 200px; --drawer-w: 560px; }
+.sidebar { width: var(--sidebar-w); }
+.brand { width: calc(var(--sidebar-w) - 16px); }
+.drawer { width: var(--drawer-w); max-width: 100%; }
+.sidebar-collapsed .sidebar .label, .sidebar-collapsed .brand span { display: none; }
+.sidebar-collapsed .nav-item { justify-content: center; padding: 8px; }
 @media (max-width: 1000px) {
-  .sidebar { width: 56px !important; }
+  :root { --sidebar-w: 56px !important; }
+  .brand { width: auto; }
   .sidebar .label { display: none; }
   .nav-item { justify-content: center; padding: 8px; }
+  .sidebar .resize-handle { display: none; }
 }
+
+/* The edge that resizes a panel: the cursor changes over it and a purple line shows where it is */
+.resize-handle { position: absolute; top: 0; bottom: 0; width: 8px; z-index: 20; cursor: col-resize; touch-action: none; outline: none; }
+.resize-handle::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; transition: background .15s; }
+.resize-handle:hover::after, .resize-handle:focus-visible::after, .resize-handle.dragging::after { background: #8b5cf6; transition-delay: .1s; }
+body.resizing, body.resizing * { cursor: col-resize !important; user-select: none; }
 
 .toast-enter { animation: toast-in .2s ease-out; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
