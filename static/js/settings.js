@@ -161,8 +161,8 @@ App.pages.settings = {
             } else if (App.info.server_mode) {
                 action = `<div class="w-full text-xs space-y-2">
                     <p>Update the container on the server, in the folder where you installed Themarr:</p>
-                    <pre class="log-view bg-page border border-line rounded-md px-3 py-2 text-ink select-text whitespace-pre-wrap">git pull
-docker compose up -d --build</pre>
+                    <pre class="log-view bg-page border border-line rounded-md px-3 py-2 text-ink select-text whitespace-pre-wrap">docker compose pull
+docker compose up -d</pre>
                     <p class="text-faint">Then reload this page. If the release notes say the Jellyfin buttons changed, click Install again under Jellyfin.</p></div>`;
             } else {
                 action = `<p class="w-full text-xs">This copy runs from the source code: update it with <code class="bg-raised px-1 rounded">git pull</code>, or download the new zip.</p>`;

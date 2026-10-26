@@ -2,7 +2,9 @@
 # Setup guide: docs/SERVER.md
 services:
   themarr:
-    build: .
+    # Published for amd64 and arm64 on each release (and weekly with the newest yt-dlp). To build from the
+    # source instead, add `build: .` under themarr in docker-compose.override.yml (see docs/SERVER.md).
+    image: ghcr.io/themarr-jellyfin/themarr:latest
     container_name: themarr
     restart: unless-stopped
     # Same owner as the media files, so themes are never created as root

@@ -8,7 +8,7 @@ It assumes a Linux server with Docker and Docker Compose, and Jellyfin already r
 
 | Piece | What it does |
 | --- | --- |
-| `docker-compose.yml` + `.env` | Builds and runs the container. Everything specific to your server goes in `.env`. |
+| `docker-compose.yml` + `.env` | Runs the container from the published image. Everything specific to your server goes in `.env`. |
 | Themarr web UI, port 8686 | Same app as the desktop version. Sign in with a Jellyfin admin account. |
 | `jellyfin/themarr-buttons.js` | The buttons inside Jellyfin, loaded by the JavaScript Injector plugin. Themarr can install it for you. |
 
@@ -51,12 +51,24 @@ services:
       - /mnt/disk3/Movies:/data/Movies:ro
 ```
 
-## 2. Get the code
+## 2. Get the compose file
+
+Themarr is published as a ready image, `ghcr.io/themarr-jellyfin/themarr`, for amd64 and arm64. Only two files
+are needed:
 
 ```bash
-git clone https://github.com/themarr-jellyfin/Themarr.git ~/themarr
-cd ~/themarr
-cp env.example .env
+mkdir ~/themarr && cd ~/themarr
+curl -fsSLO https://raw.githubusercontent.com/themarr-jellyfin/Themarr/main/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/themarr-jellyfin/Themarr/main/env.example -o .env
+```
+
+**Building from the source** instead: clone the repository, and put this in `docker-compose.override.yml`
+next to `docker-compose.yml`, then use `docker compose up -d --build`:
+
+```yaml
+services:
+  themarr:
+    build: .
 ```
 
 ## 3. Create a Jellyfin API key
@@ -86,7 +98,7 @@ Keep `MEDIA_ACCESS=ro` for now.
 ## 5. Start it
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 docker compose logs -f themarr
 ```
 
@@ -166,13 +178,20 @@ Settings > Updates shows when a new version is out, with its release notes. A co
 
 ```bash
 cd ~/themarr
-git pull
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
-`.env`, `config/` (settings, login secret, backups) and `docker-compose.override.yml` are kept. If downloads
-start failing (YouTube and SoundCloud change often), rebuild without cache to get the newest yt-dlp:
-`docker compose build --no-cache`.
+`.env`, `config/` (settings, login secret, backups) and `docker-compose.override.yml` are kept. The image is
+rebuilt every week with the newest yt-dlp, so if downloads start failing (YouTube and SoundCloud change often),
+the same two commands usually fix it. Watchtower and similar tools can run them for you.
+
+To stay on one version, use a tag instead of `latest` in `docker-compose.yml`: `:1.15` follows the fixes of
+that line, `:1.15.3` stays on that release (still rebuilt weekly with the newest yt-dlp).
+
+**Installed before the published image** (with `git clone` and `--build`): run `git pull` once in `~/themarr`,
+then the two commands above. From then on the container comes from the published image.
+
 After an update that changed `jellyfin/themarr-buttons.js`, click **Install** again in Settings > Jellyfin.
 
 ## Troubleshooting

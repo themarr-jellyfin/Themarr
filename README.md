@@ -117,10 +117,14 @@ The recommended setup for a home server. Themarr runs as a container on the same
 reached from your browser on port 8686.
 
 ```bash
-git clone https://github.com/themarr-jellyfin/Themarr.git themarr && cd themarr
-cp env.example .env      # set MEDIA_PATH and JELLYFIN_API_KEY
-docker compose up -d --build
+mkdir themarr && cd themarr
+curl -fsSLO https://raw.githubusercontent.com/themarr-jellyfin/Themarr/main/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/themarr-jellyfin/Themarr/main/env.example -o .env
+nano .env                # set MEDIA_PATH and JELLYFIN_API_KEY
+docker compose up -d
 ```
+
+The image is `ghcr.io/themarr-jellyfin/themarr`, for amd64 and arm64 (a Raspberry Pi with a 64-bit OS, most ARM NAS).
 
 The full guide, including folder layout, permissions and the Jellyfin buttons, is in
 **[docs/SERVER.md](docs/SERVER.md)**.

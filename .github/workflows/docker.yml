@@ -1,0 +1,83 @@
+# Server image on GitHub Container Registry: ghcr.io/themarr-jellyfin/themarr
+# Built on each release, and again every Monday from the latest release so the image carries the newest yt-dlp
+# (YouTube and SoundCloud change often). Tags: the version (1.15.3), the minor line (1.15) and latest.
+name: Docker image
+
+on:
+  release:
+    types: [published]
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/themarr-jellyfin/themarr
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pick the release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          tag="${EVENT_TAG:-$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)}"
+          version="${tag#v}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "minor=${version%.*}" >> "$GITHUB_OUTPUT"
+          echo "Building $tag"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      # Built without cache so pip always fetches the newest yt-dlp; the publish step below reuses these layers
+      - name: Build for the smoke test
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          no-cache: true
+          tags: themarr:test
+
+      - name: Smoke test
+        run: |
+          docker run -d --name smoke -p 8686:8686 themarr:test
+          for i in $(seq 1 30); do curl -fs -o /dev/null http://127.0.0.1:8686/login && break; sleep 1; done
+          docker logs smoke
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8686/login)" = 200
+          docker exec smoke python -m yt_dlp --version
+          docker exec smoke ffmpeg -hide_banner -version | head -1
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Publish for amd64 and arm64
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.release.outputs.version }}
+            ${{ env.IMAGE }}:${{ steps.release.outputs.minor }}
+            ${{ env.IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.title=Themarr
+            org.opencontainers.image.description=Theme song manager for Jellyfin
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+            org.opencontainers.image.licenses=GPL-3.0-only
