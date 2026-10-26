@@ -201,11 +201,11 @@ def _start_background(target, *args):
     t.daemon = True
     t.start()
 
-def _download_with_retry(link, log_prefix, name):
+def _download_with_retry(link, log_prefix, name, on_progress=None):
     max_attempts = 2
     for attempt in range(max_attempts):
         try:
-            return download_music(link)
+            return download_music(link, on_progress)
         except Exception:
             if attempt == max_attempts - 1:
                 raise
@@ -406,10 +406,17 @@ def _media_entry(media_path):
 def _process_queue_item(item, set_stage):
     downloaded_file = None
     try:
-        set_stage("Downloading")
-        downloaded_file = _download_with_retry(item['link'], "[QUEUE]", item['name'])
+        # Progress of the item, in percent. The loudness pass of ffmpeg usually takes longer than the download
+        def on_download(step, fraction):
+            if step == 'convert':
+                set_stage("Converting", 25)
+            elif fraction is not None:
+                set_stage("Downloading", round(fraction * 20))
 
-        set_stage("Processing")
+        set_stage("Downloading", 0)
+        downloaded_file = _download_with_retry(item['link'], "[QUEUE]", item['name'], on_download)
+
+        set_stage("Processing", 30)
         destination = item.get('destination') or 'Main Theme'
         season = None if destination == 'Main Theme' else destination
         final_path = generate_destination_path(item['media_folder'], 'season' if season else 'main', item['name'],
@@ -419,7 +426,8 @@ def _process_queue_item(item, set_stage):
             effects = load_config().get("audio_fx", {})
         normalize_and_save(downloaded_file, final_path, item['lufs'], effects,
                            start_time=item.get('startTime'), end_time=item.get('endTime'),
-                           normalize_enabled=item.get('normalize', True))
+                           normalize_enabled=item.get('normalize', True),
+                           on_progress=lambda fraction: set_stage("Processing", 30 + round(fraction * 70)))
         print(f"[SUCCESS] {item['name']} saved for {item['media_name']}.")
     finally:
         if downloaded_file and os.path.exists(downloaded_file):
@@ -1266,14 +1274,18 @@ class Api:
             print(f"[THEMERRDB] Lookup failed for {folder_name}: {e}")
             return None
 
-    def get_media_theme_suggestions(self, folder_name, folder_path=None):
+    def get_media_theme_suggestions(self, folder_name, folder_path=None, source=None):
         try:
             meta = self.get_assistant_search_query(folder_name, folder_path)
             if not meta.get("success"):
                 return {"success": False, "message": meta.get("message")}
                 
             query = meta["search_query"]
-            yt_results = self.search_youtube(query)
+            # SoundCloud finds nothing with the long YouTube phrase: title (and year) plus "theme"
+            if source == "soundcloud":
+                query = query.removesuffix(" official theme song opening") + " theme"
+            # Missing page: its source switch, or the default source of Settings
+            yt_results = self.search(query, source)
             top_results = yt_results[:3] if yt_results else []
 
             # The ThemerrDB pick goes first, so it is the one already selected on the Missing page

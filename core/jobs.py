@@ -33,7 +33,7 @@ class ThemeQueue:
             ids = []
             for entry in entries:
                 item = dict(entry, id=next(self._ids), media_folder=media_folder,
-                            media_name=os.path.basename(media_folder), status='waiting', stage='', message='')
+                            media_name=os.path.basename(media_folder), status='waiting', stage='', progress=None, message='')
                 self._items.append(item)
                 ids.append(item['id'])
         self._wake.set()
@@ -61,7 +61,7 @@ class ThemeQueue:
             item = self._find(item_id)
             if not item or item['status'] != 'error':
                 return False
-            item.update(status='waiting', stage='', message='', finished=False)
+            item.update(status='waiting', stage='', progress=None, message='', finished=False)
         self._wake.set()
         return True
 
@@ -98,15 +98,16 @@ class ThemeQueue:
                 self._wake.clear()
                 continue
 
-            def set_stage(text, item=item):
+            def set_stage(text, progress=None, item=item):
                 item['stage'] = text
+                item['progress'] = progress
 
             try:
                 self._process_item(dict(item), set_stage)
-                item.update(status='completed', stage='')
+                item.update(status='completed', stage='', progress=None)
             except Exception as e:
                 # The status first: if logging fails too, the item must not stay "processing" forever
-                item.update(status='error', stage='', message=str(e))
+                item.update(status='error', stage='', progress=None, message=str(e))
                 _log(f"[QUEUE] ❌ '{item.get('name')}' failed: {e}")
 
             try:

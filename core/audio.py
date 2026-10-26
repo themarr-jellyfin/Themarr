@@ -50,20 +50,34 @@ def build_audio_filter_chain(input_file, target_lufs, audio_effects, normalize_e
 _SERVER_FFMPEG_LOCK = threading.Lock()
 
 
-def _run_ffmpeg(command):
+def _run_ffmpeg(command, on_progress=None, duration=None):
     if SERVER_MODE:
         with _SERVER_FFMPEG_LOCK:
-            return _run_ffmpeg_now(command)
-    return _run_ffmpeg_now(command)
+            return _run_ffmpeg_now(command, on_progress, duration)
+    return _run_ffmpeg_now(command, on_progress, duration)
 
 
-def _run_ffmpeg_now(command):
+def _run_ffmpeg_now(command, on_progress=None, duration=None):
+    """on_progress(0..1) follows the output time against duration (seconds of the input)"""
     startupinfo = None
     if IS_WINDOWS:
         # Keeps the ffmpeg console window hidden on Windows
         startupinfo = subprocess.STARTUPINFO()
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-    subprocess.run(command, check=True, startupinfo=startupinfo)
+    if not on_progress or not duration:
+        subprocess.run(command, check=True, startupinfo=startupinfo)
+        return
+    command = [command[0], '-progress', 'pipe:1', '-nostats'] + command[1:]
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, text=True, startupinfo=startupinfo)
+    for line in process.stdout:
+        key, _, value = line.strip().partition('=')
+        if key == 'out_time_us' and value.isdigit():
+            try:
+                on_progress(min(int(value) / 1e6 / duration, 1.0))
+            except Exception:
+                pass
+    if process.wait():
+        raise subprocess.CalledProcessError(process.returncode, command)
 
 
 def _remove_quietly(path):
@@ -103,7 +117,14 @@ def _pre_trim(input_file, ss_sec, to_sec, error_label):
         raise
 
 
-def _encode_with_filters(input_file, filter_chain, output_path):
+def _audio_length(path):
+    try:
+        return MP3(path).info.length
+    except Exception:
+        return None
+
+
+def _encode_with_filters(input_file, filter_chain, output_path, on_progress=None):
     _run_ffmpeg([
         FFMPEG_PATH, '-hide_banner', '-loglevel', 'error', '-y',
         '-i', input_file,
@@ -111,10 +132,11 @@ def _encode_with_filters(input_file, filter_chain, output_path):
         '-filter:a', filter_chain,
         '-b:a', '320k',
         output_path
-    ])
+    ], on_progress, _audio_length(input_file) if on_progress else None)
 
 
-def normalize_and_save(input_file, full_output_path, target_lufs, audio_effects=None, start_time=None, end_time=None, normalize_enabled=True):
+def normalize_and_save(input_file, full_output_path, target_lufs, audio_effects=None, start_time=None, end_time=None, normalize_enabled=True,
+                       on_progress=None):
     dir_name, file_name = os.path.split(full_output_path)
 
     forbidden_chars = ['|', '*', '?', ':', '"', '<', '>', '/', '\\']
@@ -154,7 +176,7 @@ def normalize_and_save(input_file, full_output_path, target_lufs, audio_effects=
 
     try:
         filter_chain = build_audio_filter_chain(input_file, target_lufs, audio_effects, normalize_enabled)
-        _encode_with_filters(input_file, filter_chain, full_output_path)
+        _encode_with_filters(input_file, filter_chain, full_output_path, on_progress)
         print("[AUDIO] ✨ Success! File is treated, trimmed, normalized and ready.")
 
     finally:
@@ -264,11 +286,25 @@ def get_streaming_url(youtube_url):
         print(f"[AUDIO] Could not get the audio stream: {e}")
         return {"success": False, "error": str(e)}
 
-def download_music(youtube_url):
+def _download_fraction(status):
+    """How much of the file yt-dlp has downloaded, from 0 to 1, or None when it cannot tell"""
+    if status.get('status') == 'finished':
+        return 1.0
+    total = status.get('total_bytes') or status.get('total_bytes_estimate')
+    if total and status.get('downloaded_bytes') is not None:
+        return min(status['downloaded_bytes'] / total, 1.0)
+    # HLS (most SoundCloud tracks) counts fragments instead of bytes
+    if status.get('fragment_count'):
+        return min((status.get('fragment_index') or 0) / status['fragment_count'], 1.0)
+    return None
+
+
+def download_music(youtube_url, on_progress=None):
+    """on_progress(step, fraction): ('download', 0..1 or None) while downloading, then ('convert', None)"""
     print(f"\n[DOWNLOAD] Starting download: {youtube_url}")
-    
-    os_temp_folder = tempfile.gettempdir() 
-    
+
+    os_temp_folder = tempfile.gettempdir()
+
     options = {
         **youtube_options(),
         'ffmpeg_location': FFMPEG_PATH,
@@ -276,6 +312,16 @@ def download_music(youtube_url):
         'outtmpl': os.path.join(os_temp_folder, '%(title)s.%(ext)s'),
         'nocolor': True,
     }
+    if on_progress:
+        def report(step, fraction):
+            # Runs inside yt-dlp: a failing progress callback must never break the download
+            try:
+                on_progress(step, fraction)
+            except Exception:
+                pass
+        options['progress_hooks'] = [lambda s: report('download', _download_fraction(s))]
+        options['postprocessor_hooks'] = [lambda s: s.get('status') == 'started' and s.get('postprocessor') == 'ExtractAudio'
+                                          and report('convert', None)]
     with yt_dlp.YoutubeDL(options) as ydl:
         info = ydl.extract_info(youtube_url, download=True)
         base_filename = ydl.prepare_filename(info)

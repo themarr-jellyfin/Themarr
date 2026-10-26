@@ -97,7 +97,11 @@ App.pages.activity = {
 
     statusCell(item) {
         if (item.status === 'processing') {
-            return `<span class="text-xs text-accent-text flex items-center gap-1.5">${icon('loader-circle', 'icon-sm animate-spin')}${esc(item.stage || 'Working')}...</span>`;
+            const progress = item.progress ?? 0;
+            return `<div class="max-w-[240px]">
+                <span class="text-xs text-accent-text flex items-center gap-1.5">${icon('loader-circle', 'icon-sm animate-spin')}${esc(item.stage || 'Working')}...<span data-progress-text="${item.id}" class="ml-auto text-faint tabular-nums">${progress}%</span></span>
+                <div class="mt-1.5 h-1 bg-raised rounded-full overflow-hidden"><div data-progress="${item.id}" class="h-full bg-accent rounded-full transition-[width] duration-700 ease-out" style="width:${progress}%"></div></div>
+            </div>`;
         }
         if (item.status === 'completed') return `<span class="text-xs text-green-400 flex items-center gap-1.5">${icon('circle-check', 'icon-sm')}Done</span>`;
         if (item.status === 'error') {
@@ -145,6 +149,17 @@ App.pages.activity = {
 
     onQueue() {
         if (this.tab === 'queue') this.draw();
+    },
+
+    // Only the percentage moved: update the bars in place, so the spinners do not restart every second
+    onProgress() {
+        for (const item of App.queue.items) {
+            if (item.status !== 'processing') continue;
+            const bar = document.querySelector(`[data-progress="${item.id}"]`);
+            const text = document.querySelector(`[data-progress-text="${item.id}"]`);
+            if (bar) bar.style.width = `${item.progress ?? 0}%`;
+            if (text) text.textContent = `${item.progress ?? 0}%`;
+        }
     },
 
     onLogs() {

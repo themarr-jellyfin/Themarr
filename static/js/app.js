@@ -553,6 +553,7 @@ App.poll = async function () {
 
         App.updateIndicator();
         if (changed) App.pages[App.route.name]?.onQueue?.(finishedMedia);
+        else App.pages[App.route.name]?.onProgress?.();
     } catch (err) {
         console.error('Polling failed:', err);
     }
