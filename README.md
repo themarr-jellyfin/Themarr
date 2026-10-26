@@ -8,6 +8,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/themarr-jellyfin/Themarr?style=for-the-badge" alt="License: GPL-3.0" /></a>
   <img src="https://img.shields.io/badge/Jellyfin-10.10-00A4DC?style=for-the-badge&logo=jellyfin&logoColor=white" alt="Jellyfin 10.10" />
   <img src="https://img.shields.io/badge/Docker-ready-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker" />
+  <a href="https://ko-fi.com/themarr"><img src="https://img.shields.io/badge/Ko--fi-Support-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Support on Ko-fi" /></a>
 </div>
 
 ## About
@@ -181,6 +182,11 @@ and [pywebview](https://github.com/r0x0r/pywebview) for the desktop window.
 Theme suggestions come from [ThemerrDB](https://github.com/LizardByte/ThemerrDB), maintained by
 [LizardByte](https://github.com/LizardByte) and its contributors, who pick a theme for each title by hand.
 Thank you. If a pick is missing or wrong, it can be fixed there, and every app that uses the list gets it.
+
+## Support
+
+Themarr is free and always will be. If it saves you time, you can support it on
+[Ko-fi](https://ko-fi.com/themarr). Starring the repository and telling other Jellyfin users about it helps too.
 
 ## License
 

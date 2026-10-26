@@ -128,7 +128,12 @@ App.pages.settings = {
                     <label class="ml-auto flex items-center gap-2 text-xs text-muted"><input id="setOpenBrowser" type="checkbox" class="w-4 h-4" ${s.open_browser ? 'checked' : ''}>Open the browser on start</label>
                 </section>`}
 
-                <p class="text-[11px] text-faint text-center pt-2">Themarr ${esc(App.info.version)} · <a href="https://github.com/themarr-jellyfin/Themarr" target="_blank" class="hover:text-muted">GitHub</a></p>
+                <section class="card px-5 py-4 flex items-center gap-3">
+                    <div><h2 class="font-medium">Support Themarr</h2><p class="text-xs text-faint mt-0.5">Themarr is free and open source. If it saves you time, you can buy it a coffee.</p></div>
+                    <a href="https://ko-fi.com/themarr" target="_blank" class="ml-auto btn">${icon('coffee')}Support on Ko-fi</a>
+                </section>
+
+                <p class="text-[11px] text-faint text-center pt-2">Themarr ${esc(App.info.version)} · <a href="https://github.com/themarr-jellyfin/Themarr" target="_blank" class="hover:text-muted">GitHub</a> · <a href="https://ko-fi.com/themarr" target="_blank" class="hover:text-muted">Ko-fi</a></p>
             </div>`;
 
         this.bind(view, folders);
