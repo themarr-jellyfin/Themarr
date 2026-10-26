@@ -1,22 +1,55 @@
-// Missing page: media with no theme yet, with the ThemerrDB pick (when there is one) and the top YouTube results
-// for each (the old Theme Assistant)
+// Missing page: media with no theme yet, with the ThemerrDB pick (when there is one) and the top results of one
+// search source for each (the old Theme Assistant)
 
 App.pages.missing = {
-    suggestions: new Map(),   // folder_path -> { loading, official_name, items: [] }
+    source: '',               // search source of the page, one of SEARCH_SOURCES; starts as the Settings default
+    bySource: new Map(),      // source -> Map(folder_path -> { loading, official_name, items: [] })
     picks: new Map(),         // folder_path -> index of the chosen suggestion, or -1 to skip
     names: new Map(),         // folder_path -> theme name typed by the user
 
+    // Switching back to a source already searched shows its results again without searching
+    get suggestions() {
+        if (!this.bySource.has(this.source)) this.bySource.set(this.source, new Map());
+        return this.bySource.get(this.source);
+    },
+
     async render(view) {
+        this.source ||= App.settings.search_source || 'youtube';
         view.innerHTML = `<div class="min-h-full flex flex-col">
             <div class="sticky top-0 z-10 bg-page/95 backdrop-blur border-b border-line px-6 py-3 flex flex-wrap items-center gap-x-3 gap-y-1">
                 <h1 class="text-lg font-semibold">Missing</h1>
                 <span class="text-faint text-xs">Media with no theme yet. Pick a suggestion, listen to it, and add the ones you like to the queue.</span>
+                <div id="missingSources" class="ml-auto flex items-center gap-1">
+                    <span class="text-[11px] text-faint mr-1">Search on</span>
+                    ${SEARCH_SOURCES.map(([id, label]) => `<button type="button" data-source="${id}" class="px-2.5 py-1 rounded text-[11px]">${label}</button>`).join('')}
+                </div>
             </div>
             <div id="missingList" class="flex-1 p-6 space-y-3"><div class="p-10 text-center text-faint">Loading library...</div></div>
             <div id="missingBar" class="hidden sticky bottom-0 bg-side border-t border-line px-6 py-3 items-center gap-3"></div></div>`;
 
+        view.querySelectorAll('[data-source]').forEach(b => b.onclick = () => this.setSource(b.dataset.source));
+        this.drawSources();
         await App.loadLibrary();
         if (App.route.name !== 'missing') return;
+        this.draw();
+        this.loadSuggestions();
+    },
+
+    drawSources() {
+        document.querySelectorAll('#missingSources [data-source]').forEach(b => {
+            const active = b.dataset.source === this.source;
+            b.className = `px-2.5 py-1 rounded text-[11px] ${active ? 'bg-raised text-ink ring-1 ring-line' : 'text-muted hover:text-ink'}`;
+            b.setAttribute('aria-pressed', active);
+        });
+    },
+
+    // The picks point into the old lists: back to the first suggestion, but a skipped media stays skipped
+    setSource(source) {
+        if (source === this.source) return;
+        this.source = source;
+        for (const [folder, pick] of this.picks) if (pick >= 0) this.picks.delete(folder);
+        Player.stop();
+        this.drawSources();
         this.draw();
         this.loadSuggestions();
     },
@@ -119,7 +152,7 @@ App.pages.missing = {
     async preview(folder, index) {
         const item = this.suggestions.get(folder)?.items[index];
         if (!item) return;
-        const key = `missing:${folder}:${index}`;
+        const key = `missing:${this.source}:${folder}:${index}`;
         if (Player.key === key) return Player.toggle(key);
         const result = await api('/api/get_stream_info', { url: item.url }).catch(() => ({}));
         if (!result.success) return toast('This video cannot be previewed.', 'error');
@@ -129,7 +162,7 @@ App.pages.missing = {
     syncPlayers() {
         document.querySelectorAll('#missingList [data-preview]').forEach(button => {
             const folder = button.closest('[data-card]').dataset.card;
-            const playing = Player.isPlaying(`missing:${folder}:${button.dataset.preview}`);
+            const playing = Player.isPlaying(`missing:${this.source}:${folder}:${button.dataset.preview}`);
             const wanted = playing ? 'pause' : 'play';
             if (button.dataset.state !== wanted) {
                 button.dataset.state = wanted;
@@ -140,24 +173,28 @@ App.pages.missing = {
     },
 
     // Two at a time: each search takes a few seconds and the server is small
+    // A source switch stops these workers after their current search and starts new ones for the new source
     async loadSuggestions() {
-        const queue = this.missingMedia().filter(m => !this.suggestions.has(m.folder_path));
+        const source = this.source;
+        const suggestions = this.suggestions;
+        const queue = this.missingMedia().filter(m => !suggestions.has(m.folder_path));
+        const current = () => App.route.name === 'missing' && this.source === source;
         const worker = async () => {
-            while (queue.length && App.route.name === 'missing') {
+            while (queue.length && current()) {
                 const media = queue.shift();
-                this.suggestions.set(media.folder_path, { loading: true, items: [] });
+                suggestions.set(media.folder_path, { loading: true, items: [] });
                 const result = await api('/api/library/assistant/suggestions', {
-                    folder_name: media.media_name, folder_path: media.folder_path,
+                    folder_name: media.media_name, folder_path: media.folder_path, source,
                 }).catch(() => ({}));
-                this.suggestions.set(media.folder_path, {
+                suggestions.set(media.folder_path, {
                     loading: false, official_name: result.official_name, items: result.success ? result.suggestions : [],
                 });
-                if (App.route.name === 'missing') this.redrawCard(media.folder_path);
+                if (current()) this.redrawCard(media.folder_path);
             }
         };
         await Promise.all([worker(), worker()]);
-        // Cards left half loaded by leaving the page are fetched again next time
-        for (const [folder, state] of this.suggestions) if (state.loading) this.suggestions.delete(folder);
+        // Cards left half loaded by leaving the page or switching source are fetched again next time
+        for (const [folder, state] of suggestions) if (state.loading) suggestions.delete(folder);
     },
 
     chosen() {

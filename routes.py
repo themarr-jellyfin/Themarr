@@ -265,7 +265,8 @@ def register_routes(app, api_system):
         data = body()
         if data.get('folder_path'):
             check_media_read(data['folder_path'])
-        return jsonify(api_system.get_media_theme_suggestions(data.get('folder_name', ''), data.get('folder_path')))
+        return jsonify(api_system.get_media_theme_suggestions(data.get('folder_name', ''), data.get('folder_path'),
+                                                                   data.get('source')))
 
     @app.route('/api/sources/suggested', methods=['POST'])
     def api_suggested_theme():
