@@ -25,6 +25,10 @@ It runs as a Windows desktop app or as a Docker container next to your Jellyfin 
 Jellyfin's own pages that opens the current series or movie in Themarr.
 
 <p align="center">
+  <img src="docs/images/demo.gif" alt="Themarr in use: opening a movie, picking the ThemerrDB suggestion in Add Theme, previewing it, marking the start and adding it to the queue, then the download in Activity" width="100%" />
+</p>
+
+<p align="center">
   <img src="docs/images/screenshot-library.png" alt="Themarr library with a poster for each movie and how many themes it has, over the backdrop of one of them" width="100%" />
 </p>
 <p align="center">
