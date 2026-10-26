@@ -80,6 +80,7 @@ def load_config():
         "check_updates": True,
         "show_backdrops": True,
         "use_themerrdb": True,
+        "search_source": "youtube",
         "preview_volume": {"level": 1.0, "muted": False},
         "audio_fx": {
             "enabled": False,

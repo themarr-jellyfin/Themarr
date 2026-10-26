@@ -1,4 +1,5 @@
-"""Theme suggestions that come from somewhere other than the YouTube search.
+"""Where themes come from: the text search of each source (YouTube, YouTube Music, SoundCloud, all through yt-dlp)
+and the ThemerrDB suggestion.
 
 ThemerrDB (https://github.com/LizardByte/ThemerrDB, BSD-3-Clause, by LizardByte) is a community list that picks one
 YouTube theme for each movie and TV show, looked up by TMDB id (movies also by IMDb id). It is published once a day
@@ -7,7 +8,7 @@ import os
 import re
 import threading
 import time
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote_plus, urlparse
 
 import requests
 
@@ -151,3 +152,99 @@ def themerrdb_theme(kind, ids):
             'source': 'themerrdb',
         }
     return None
+
+
+# ----------------------------------------------------------------------
+# Text search, one entry per source. Every result has the same shape:
+# {title, url, channel, duration ("3:05" or ""), thumbnail, source}
+# ----------------------------------------------------------------------
+SEARCH_SOURCES = {
+    'youtube': 'YouTube',
+    'youtube_music': 'YouTube Music',
+    'soundcloud': 'SoundCloud',
+}
+SEARCH_SIZE = 35
+# SoundCloud answers 20 results per request; a second page doubles or triples the wait
+SOUNDCLOUD_SIZE = 20
+
+
+def _duration_text(seconds):
+    if not seconds:
+        return ''
+    seconds = int(seconds)
+    return f"{seconds // 60}:{seconds % 60:02d}"
+
+
+def _flat_search(target):
+    from yt_dlp import YoutubeDL
+    # playlistend: a YouTube Music search page otherwise keeps loading hundreds of results (25 s instead of 3 s)
+    with YoutubeDL({'quiet': True, 'extract_flat': True, 'skip_download': True, 'playlistend': SEARCH_SIZE}) as ydl:
+        return [e for e in (ydl.extract_info(target, download=False) or {}).get('entries') or [] if e]
+
+
+def _youtube(query):
+    results = []
+    for entry in _flat_search(f"ytsearch{SEARCH_SIZE}:{query}"):
+        video_id = entry.get('id')
+        results.append({
+            'title': entry.get('title', 'Unknown Title'),
+            'url': f"https://www.youtube.com/watch?v={video_id}" if video_id else entry.get('url'),
+            'channel': entry.get('uploader', 'Unknown Channel'),
+            'duration': _duration_text(entry.get('duration')) or '0:00',
+            'thumbnail': f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg" if video_id else '',
+            'source': 'youtube',
+        })
+    return results
+
+
+def _youtube_music(query):
+    """The Songs section of YouTube Music: official audio uploads. The search page gives no channel or duration;
+    the duration shows once the preview loads"""
+    results = []
+    entries = _flat_search(f"https://music.youtube.com/search?q={quote_plus(query)}#songs")
+    for entry in entries[:SEARCH_SIZE]:
+        video_id = entry.get('id')
+        if not video_id:
+            continue
+        results.append({
+            'title': entry.get('title', 'Unknown Title'),
+            # The same video on www.youtube.com, so previews, downloads and ThemerrDB links all match
+            'url': f"https://www.youtube.com/watch?v={video_id}",
+            'channel': entry.get('uploader') or entry.get('channel') or '',
+            'duration': _duration_text(entry.get('duration')),
+            'thumbnail': f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg",
+            'source': 'youtube_music',
+        })
+    return results
+
+
+def _soundcloud(query):
+    """Tracks from labels often play only a 30 s clip outside SoundCloud Go; those show as 0:30"""
+    results = []
+    for entry in _flat_search(f"scsearch{SOUNDCLOUD_SIZE}:{query}"):
+        thumbs = {t.get('id'): t.get('url') for t in entry.get('thumbnails') or []}
+        results.append({
+            'title': entry.get('title', 'Unknown Title'),
+            # The API link: the soundcloud.com page link of a search result is sometimes stale (404)
+            'url': entry.get('url') or entry.get('webpage_url'),
+            'channel': entry.get('uploader', ''),
+            'duration': _duration_text(entry.get('duration')),
+            'thumbnail': thumbs.get('t300x300') or thumbs.get('t500x500') or thumbs.get('original') or '',
+            'source': 'soundcloud',
+        })
+    return results
+
+
+_SEARCHERS = {'youtube': _youtube, 'youtube_music': _youtube_music, 'soundcloud': _soundcloud}
+
+
+def search(query, source='youtube'):
+    """Results of one source for a text query; an unknown source searches YouTube. Empty list on any failure"""
+    if not query or not query.strip():
+        return []
+    searcher = _SEARCHERS.get(source, _youtube)
+    try:
+        return searcher(query.strip())
+    except Exception as e:
+        print(f"[SEARCH] {SEARCH_SOURCES.get(source, 'YouTube')} search failed: {e}")
+        return []

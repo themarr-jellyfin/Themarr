@@ -26,6 +26,9 @@ function icon(name, cls = '') {
     return `<i data-lucide="${name}" class="${cls}"></i>`;
 }
 
+// Text search sources of Add Theme, as in core/sources.py SEARCH_SOURCES
+const SEARCH_SOURCES = [['youtube', 'YouTube'], ['youtube_music', 'YouTube Music'], ['soundcloud', 'SoundCloud']];
+
 // Small tag naming where a suggestion came from; plain YouTube search results have none
 function sourceBadge(result) {
     if (result?.source !== 'themerrdb') return '';

@@ -243,10 +243,12 @@ def youtube_options():
     }
 
 def get_streaming_url(youtube_url):
-    """Extract the direct audio URL from YouTube and the total duration in seconds (without downloading anything)"""
+    """Direct audio URL of a link from any source yt-dlp reads, and the total duration in seconds (nothing is downloaded)"""
     try:
         ydl_opts = {
             **youtube_options(),
+            # The preview plays in an <audio> tag, which cannot open HLS playlists (SoundCloud offers both)
+            'format': 'bestaudio[protocol^=http]/bestaudio/best',
             'quiet': True,
             'no_warnings': True,
             'skip_download': True,
@@ -259,7 +261,7 @@ def get_streaming_url(youtube_url):
                 "duration": info.get('duration')  # Total duration in seconds
             }
     except Exception as e:
-        print(f"[AUDIO] Could not get the YouTube stream: {e}")
+        print(f"[AUDIO] Could not get the audio stream: {e}")
         return {"success": False, "error": str(e)}
 
 def download_music(youtube_url):

@@ -22,7 +22,7 @@ from core.audio import download_music, normalize_and_save, normalize_audio_ffmpe
 from core.jellyfin import fetch_jellyfin_data, download_jellyfin_image, fetch_jellyfin_season_image, find_jellyfin_item, get_library_index, match_media_folder, local_media_folder, install_jellyfin_buttons, refresh_jellyfin_media
 from core.files import generate_destination_path, move_loose_episodes, clean_search_name, safe_move
 from core.jobs import ThemeQueue
-from core.sources import themerrdb_theme, ids_from_folder_name, ids_from_jellyfin, guess_media_kind, youtube_video_id
+from core.sources import search as search_source, themerrdb_theme, ids_from_folder_name, ids_from_jellyfin, guess_media_kind, youtube_video_id
 from core import backup
 
 global_state = {
@@ -977,55 +977,16 @@ class Api:
         save_config(data)
         return True
 
+    def search(self, query, source=None):
+        """Text search in one source (Settings > Sources sets the default)"""
+        source = source or self.get_settings().get("search_source") or "youtube"
+        return search_source(query, source)
+
     def search_youtube(self, query):
-        if not query or not query.strip():
-            return []
-            
-        from yt_dlp import YoutubeDL
-        
-        ydl_opts = {
-            'quiet': True,
-            'extract_flat': True,
-            'force_generic_extractor': False,
-            'skip_download': True,
-        }
-        
-        try:
-            with YoutubeDL(ydl_opts) as ydl:
-                search_result = ydl.extract_info(f"ytsearch35:{query}", download=False)
-                
-                results = []
-                if 'entries' in search_result:
-                    for entry in search_result['entries']:
-                        if not entry:
-                            continue
-                            
-                        duration_secs = entry.get('duration')
-                        duration_str = "0:00"
-                        if duration_secs:
-                            mins = int(duration_secs // 60)
-                            secs = int(duration_secs % 60)
-                            duration_str = f"{mins}:{secs:02d}"
-                        
-                        video_id = entry.get('id')
-                        thumb_url = f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg" if video_id else ""
-                        
-                        results.append({
-                            'title': entry.get('title', 'Unknown Title'),
-                            'url': f"https://www.youtube.com/watch?v={video_id}" if video_id else entry.get('url'),
-                            'channel': entry.get('uploader', 'Unknown Channel'),
-                            'duration': duration_str,
-                            'thumbnail': thumb_url
-                        })
-                    return results
-        except Exception as e:
-            print(f"[YOUTUBE SEARCH ERROR] Failed to fetch data: {e}")
-            return []
-            
-        return []
+        return search_source(query, "youtube")
 
     def get_stream_info(self, url):
-        """Return the direct streaming URL for a given YouTube link."""
+        """Direct audio URL of a link, for the preview"""
         if not url:
             return {"success": False, "error": "No URL provided"}
         return get_streaming_url(url)

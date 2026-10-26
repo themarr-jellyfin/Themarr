@@ -71,8 +71,15 @@ App.pages.settings = {
 
                 <section class="card">
                     <div class="px-5 py-3 border-b border-line"><h2 class="font-medium">Sources</h2>
-                        <p class="text-xs text-faint mt-0.5">Where Themarr finds themes besides the YouTube search.</p></div>
+                        <p class="text-xs text-faint mt-0.5">Where Themarr searches for themes, and where its suggestions come from.</p></div>
                     <div class="p-5 grid grid-cols-[180px_1fr] gap-x-6 gap-y-4 items-start max-[700px]:grid-cols-1">
+                        <label class="text-muted pt-1" for="setSearchSource">Search</label>
+                        <div>
+                            <select id="setSearchSource" class="field w-48">
+                                ${SEARCH_SOURCES.map(([id, label]) => `<option value="${id}" ${(s.search_source || 'youtube') === id ? 'selected' : ''}>${label}</option>`).join('')}
+                            </select>
+                            <p class="text-[11px] text-faint mt-1">Where Add Theme searches first. You can switch for each search; the Missing page uses YouTube. Some SoundCloud tracks only play a 30 s clip.</p>
+                        </div>
                         <label class="text-muted" for="setThemerrDB">ThemerrDB</label>
                         <div>
                             <label class="flex items-center gap-2 text-xs"><input id="setThemerrDB" type="checkbox" class="w-4 h-4" ${s.use_themerrdb !== false ? 'checked' : ''}>Suggest the community pick for each movie and show</label>
@@ -272,6 +279,7 @@ docker compose up -d --build</pre>
         };
 
         $('setBackdrops').onchange = event => App.saveSettings({ show_backdrops: event.target.checked });
+        $('setSearchSource').onchange = event => App.saveSettings({ search_source: event.target.value });
         $('setThemerrDB').onchange = event => {
             App.saveSettings({ use_themerrdb: event.target.checked });
             // Suggestions already loaded were made with the old setting

@@ -1,5 +1,5 @@
-"""ThemerrDB suggestions: ids from folder names and Jellyfin, media kind, lookups, cache and removed videos.
-The network is mocked. Run from the repo root:
+"""Theme sources: the text search of each source, and ThemerrDB suggestions (ids from folder names and Jellyfin,
+media kind, lookups, cache and removed videos). The network and yt-dlp are mocked. Run from the repo root:
     PYTHONIOENCODING=utf-8 venv/Scripts/python.exe -m unittest discover tests"""
 import os
 import tempfile
@@ -143,6 +143,50 @@ class LookupTests(unittest.TestCase):
         result = self.lookup(web, "movie", {"tmdb": "603"})
         self.assertEqual(result["url"], THEME)
         self.assertEqual(result["title"], "Theme picked by ThemerrDB")
+
+
+class SearchTests(unittest.TestCase):
+    def run_search(self, source, entries):
+        with mock.patch.object(sources, "_flat_search", return_value=entries) as flat:
+            return sources.search("charade theme", source), flat.call_args[0][0]
+
+    def test_youtube(self):
+        results, target = self.run_search("youtube", [
+            {"id": "abc", "title": "Charade", "uploader": "Studio", "duration": 125}])
+        self.assertEqual(target, "ytsearch35:charade theme")
+        self.assertEqual(results, [{"title": "Charade", "url": "https://www.youtube.com/watch?v=abc", "channel": "Studio",
+                                    "duration": "2:05", "thumbnail": "https://i.ytimg.com/vi/abc/mqdefault.jpg",
+                                    "source": "youtube"}])
+
+    def test_youtube_music_links_to_youtube(self):
+        results, target = self.run_search("youtube_music", [
+            {"id": "eEP7OCfttdc", "title": "Charade (Main Title)", "url": "https://music.youtube.com/watch?v=eEP7OCfttdc"},
+            {"title": "no id"}])
+        self.assertEqual(target, "https://music.youtube.com/search?q=charade+theme#songs")
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["url"], "https://www.youtube.com/watch?v=eEP7OCfttdc")
+        self.assertEqual(results[0]["duration"], "")
+        self.assertEqual(results[0]["source"], "youtube_music")
+
+    def test_soundcloud(self):
+        results, target = self.run_search("soundcloud", [{
+            "title": "Charade: Theme", "uploader": "Henry Mancini", "duration": 30.0,
+            "url": "https://api.soundcloud.com/tracks/1", "webpage_url": "https://soundcloud.com/a/charade",
+            "thumbnails": [{"id": "mini", "url": "m.jpg"}, {"id": "t300x300", "url": "t300.jpg"}]}])
+        self.assertEqual(target, "scsearch20:charade theme")
+        self.assertEqual(results[0]["url"], "https://api.soundcloud.com/tracks/1")
+        self.assertEqual(results[0]["duration"], "0:30")
+        self.assertEqual(results[0]["thumbnail"], "t300.jpg")
+        self.assertEqual(results[0]["source"], "soundcloud")
+
+    def test_unknown_source_searches_youtube(self):
+        _, target = self.run_search("spotify", [])
+        self.assertTrue(target.startswith("ytsearch"))
+
+    def test_failure_and_empty_query(self):
+        with mock.patch.object(sources, "_flat_search", side_effect=RuntimeError("blocked")):
+            self.assertEqual(sources.search("x", "soundcloud"), [])
+        self.assertEqual(sources.search("  ", "youtube"), [])
 
 
 if __name__ == "__main__":

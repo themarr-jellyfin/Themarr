@@ -2,7 +2,7 @@
   <img src="docs/images/themarr.png" alt="Themarr logo" width="160" />
   <h1>Themarr</h1>
   <p><strong>Theme song manager for Jellyfin libraries.</strong><br />
-  Find a theme on YouTube, trim it, level its loudness, tag it and drop it in the right folder, for the whole show or for each season.</p>
+  Find a theme on YouTube, YouTube Music or SoundCloud, or take the ThemerrDB pick, then trim it, level its loudness, tag it and drop it in the right folder, for the whole show or for each season.</p>
 
   <a href="https://github.com/themarr-jellyfin/Themarr/releases/latest"><img src="https://img.shields.io/github/v/release/themarr-jellyfin/Themarr?style=for-the-badge" alt="Latest release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/themarr-jellyfin/Themarr?style=for-the-badge" alt="License: GPL-3.0" /></a>
@@ -16,9 +16,9 @@ Jellyfin plays a theme song while you browse a series or movie, as long as the m
 `theme.mp3` or a `theme-music/` folder. Themarr is a web app that builds those files for you.
 
 You pick the music. Themarr suggests the community pick from [ThemerrDB](https://github.com/LizardByte/ThemerrDB)
-when there is one, searches YouTube, lets you preview and cut the exact part you want, normalizes the
-volume so every show plays at the same level, embeds the cover and the official title from Jellyfin, and saves
-the file where Jellyfin expects it. Shows with a different opening per season get one theme per season folder.
+when there is one, searches YouTube, YouTube Music or SoundCloud, lets you preview and cut the exact part you
+want, normalizes the volume so every show plays at the same level, embeds the cover and the official title from
+Jellyfin, and saves the file where Jellyfin expects it. Shows with a different opening per season get one theme per season folder.
 
 It runs as a Windows desktop app or as a Docker container next to your Jellyfin server, with a button on
 Jellyfin's own pages that opens the current series or movie in Themarr.
@@ -30,8 +30,8 @@ Jellyfin's own pages that opens the current series or movie in Themarr.
   <img src="docs/images/screenshot-media.png" alt="Media page with the title logo and backdrop, and a theme playing with its seek bar and volume" width="100%" />
 </p>
 <p align="center">
-  <img src="docs/images/screenshot-add-theme.png" alt="Add Theme panel: YouTube results, preview with start and end marks, name and destination" width="49%" />
-  <img src="docs/images/screenshot-missing.png" alt="Missing page: media without a theme and the suggested YouTube results for each" width="49%" />
+  <img src="docs/images/screenshot-add-theme.png" alt="Add Theme panel: the ThemerrDB suggestion above the search results, a choice of YouTube, YouTube Music or SoundCloud, preview with start and end marks, name and destination" width="49%" />
+  <img src="docs/images/screenshot-missing.png" alt="Missing page: media without a theme, each with the ThemerrDB pick selected and the top YouTube results" width="49%" />
 </p>
 <p align="center"><sub>The films in the screenshots, their posters and stills are in the public domain (from Wikimedia Commons); the title logos are drawn with open fonts.</sub></p>
 
@@ -47,7 +47,9 @@ Jellyfin's own pages that opens the current series or movie in Themarr.
 - Suggested theme from [ThemerrDB](https://github.com/LizardByte/ThemerrDB), a community list with one theme
   per movie and TV show, found by the TMDB or IMDb id from Jellyfin or from the folder name
   (`Movie (1999) [tmdbid-603]`). It can be turned off in Settings.
-- YouTube search inside the app, or paste a link. Listen to the result before downloading anything.
+- Search YouTube, YouTube Music or SoundCloud inside the app (the default is set in Settings), or paste a link
+  from any of them. Listen to the result before downloading anything. Some SoundCloud tracks only play a 30 s
+  clip; their length shows as 0:30.
 - Mark where the theme starts and ends while it plays, name it, and choose where it goes: the main theme or a
   season.
 - A background download queue, like the *arr apps: it keeps going when you close the page, can be paused, and
@@ -163,7 +165,7 @@ python main.py
 
 ## Roadmap
 
-- [ ] More sources to search and download themes from, besides YouTube.
+- [x] More sources to search and download themes from, besides YouTube.
 - [ ] Crossfades and more audio effects.
 - [ ] Desktop builds for Linux and macOS.
 
@@ -171,10 +173,10 @@ Ideas and bug reports are welcome in [Issues](https://github.com/themarr-jellyfi
 
 ## Built with
 
-[yt-dlp](https://github.com/yt-dlp/yt-dlp) for search and download, [FFmpeg](https://ffmpeg.org) for audio
-processing, [Mutagen](https://github.com/quodlibet/mutagen) for tags, [Flask](https://flask.palletsprojects.com)
-and [Waitress](https://github.com/Pylons/waitress) for the web server, and
-[pywebview](https://github.com/r0x0r/pywebview) for the desktop window.
+[yt-dlp](https://github.com/yt-dlp/yt-dlp) for search and download on YouTube, YouTube Music and SoundCloud,
+[FFmpeg](https://ffmpeg.org) for audio processing, [Mutagen](https://github.com/quodlibet/mutagen) for tags,
+[Flask](https://flask.palletsprojects.com) and [Waitress](https://github.com/Pylons/waitress) for the web server,
+and [pywebview](https://github.com/r0x0r/pywebview) for the desktop window.
 
 Theme suggestions come from [ThemerrDB](https://github.com/LizardByte/ThemerrDB), maintained by
 [LizardByte](https://github.com/LizardByte) and its contributors, who pick a theme for each title by hand.
@@ -184,5 +186,6 @@ Thank you. If a pick is missing or wrong, it can be fixed there, and every app t
 
 Themarr is free software under the [GNU General Public License v3.0](LICENSE).
 
-Themarr is not affiliated with or endorsed by the Jellyfin project, LizardByte or YouTube. You are responsible for making
-sure your use of downloaded audio complies with its terms and with the copyright laws where you live.
+Themarr is not affiliated with or endorsed by the Jellyfin project, LizardByte, YouTube or SoundCloud. You are
+responsible for making sure your use of downloaded audio complies with their terms and with the copyright laws
+where you live.

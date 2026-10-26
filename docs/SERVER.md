@@ -170,8 +170,9 @@ git pull
 docker compose up -d --build
 ```
 
-`.env`, `config/` (settings, login secret, backups) and `docker-compose.override.yml` are kept. If YouTube
-downloads start failing, rebuild without cache to get the newest yt-dlp: `docker compose build --no-cache`.
+`.env`, `config/` (settings, login secret, backups) and `docker-compose.override.yml` are kept. If downloads
+start failing (YouTube and SoundCloud change often), rebuild without cache to get the newest yt-dlp:
+`docker compose build --no-cache`.
 After an update that changed `jellyfin/themarr-buttons.js`, click **Install** again in Settings > Jellyfin.
 
 ## Troubleshooting

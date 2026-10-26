@@ -246,7 +246,12 @@ def register_routes(app, api_system):
         print(f"[LIBRARY] 🗑️ Deleted {file_path}")
         return jsonify({"success": True, "message": "Theme deleted."})
 
-    # ---------------- YouTube ----------------
+    # ---------------- Search and preview ----------------
+    @app.route('/api/search', methods=['POST'])
+    def api_search():
+        data = body()
+        return jsonify(api_system.search(data.get('query', ''), data.get('source')))
+
     @app.route('/api/search_youtube', methods=['POST'])
     def api_search_youtube():
         return jsonify(api_system.search_youtube(body().get('query', '')))

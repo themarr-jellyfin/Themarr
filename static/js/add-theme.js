@@ -1,6 +1,6 @@
-// Add Theme drawer: the ThemerrDB pick when there is one, then search YouTube (or paste a link), listen, trim,
-// name it, choose where it goes, queue it.
-// Nothing is downloaded until "Add to queue": the preview streams straight from YouTube.
+// Add Theme drawer: the ThemerrDB pick when there is one, then search YouTube, YouTube Music or SoundCloud (or paste
+// a link), listen, trim, name it, choose where it goes, queue it.
+// Nothing is downloaded until "Add to queue": the preview streams straight from the source.
 
 App.pages.addTheme = {
     media: null,
@@ -10,7 +10,9 @@ App.pages.addTheme = {
     choice: null,       // { url, title, channel, duration, thumbnail }
     stream: null,       // { url, duration }
     loadingStream: false,
+    source: 'youtube',  // where the text search looks, one of SEARCH_SOURCES
     lastQuery: '',
+    lastSource: '',
     searchToken: 0,
     memory: new Map(),  // media folder -> last search, so reopening the panel picks up where it was
 
@@ -19,10 +21,13 @@ App.pages.addTheme = {
         this.results = [];
         this.shown = 0;
         this.lastQuery = '';
+        this.lastSource = '';
         this.suggested = null;
         this.choice = null;
         this.stream = null;
         this.destination = destination;
+        const saved = this.memory.get(media.folder_path);
+        this.source = saved?.source || App.settings.search_source || 'youtube';
 
         const drawer = document.getElementById('drawer');
         drawer.innerHTML = `
@@ -33,8 +38,11 @@ App.pages.addTheme = {
             <form id="atSearchForm" class="px-5 pt-4">
                 <div class="relative">
                     ${icon('search', 'absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none')}
-                    <input id="atQuery" class="field w-full pl-9 pr-20 py-2" placeholder="Search YouTube or paste a link" autocomplete="off">
+                    <input id="atQuery" class="field w-full pl-9 pr-20 py-2" autocomplete="off">
                     <button class="absolute right-1.5 top-1/2 -translate-y-1/2 btn py-1">Search</button>
+                </div>
+                <div id="atSources" class="flex gap-1 mt-2">
+                    ${SEARCH_SOURCES.map(([id, label]) => `<button type="button" data-source="${id}" class="px-2.5 py-1 rounded text-[11px]">${label}</button>`).join('')}
                 </div>
             </form>
             <div id="atSuggested" class="hidden px-5 pt-3"></div>
@@ -50,6 +58,13 @@ App.pages.addTheme = {
         // Leaving the field after changing it searches too, like pressing Enter
         drawer.querySelector('#atQuery').onchange = () => this.search();
         drawer.querySelector('#atAdd').onclick = () => this.addToQueue();
+        drawer.querySelectorAll('[data-source]').forEach(b => b.onclick = () => {
+            if (b.dataset.source === this.source) return;
+            this.source = b.dataset.source;
+            this.drawSources();
+            this.search();
+        });
+        this.drawSources();
         // Reaching the end of the list loads the next results, same as "Show more results"
         const list = drawer.querySelector('#atResults');
         const loadMoreAtEnd = () => {
@@ -70,10 +85,9 @@ App.pages.addTheme = {
         refreshIcons();
 
         this.loadSuggested(media);
-        const saved = this.memory.get(media.folder_path);
         if (saved) {
             drawer.querySelector('#atQuery').value = saved.query;
-            Object.assign(this, { results: saved.results, shown: saved.shown, lastQuery: saved.lastQuery });
+            Object.assign(this, { results: saved.results, shown: saved.shown, lastQuery: saved.lastQuery, lastSource: saved.source });
             this.drawResults();
             requestAnimationFrame(() => { document.getElementById('atResults').scrollTop = saved.scroll; });
             return;
@@ -117,11 +131,26 @@ App.pages.addTheme = {
         box.querySelector('[data-suggested]').onclick = () => this.select(r);
     },
 
+    sourceLabel() {
+        return (SEARCH_SOURCES.find(([id]) => id === this.source) || SEARCH_SOURCES[0])[1];
+    },
+
+    drawSources() {
+        document.querySelectorAll('#atSources [data-source]').forEach(b => {
+            const active = b.dataset.source === this.source;
+            b.className = `px-2.5 py-1 rounded text-[11px] ${active ? 'bg-raised text-ink ring-1 ring-line' : 'text-muted hover:text-ink'}`;
+            b.setAttribute('aria-pressed', active);
+        });
+        const input = document.getElementById('atQuery');
+        if (input) input.placeholder = `Search ${this.sourceLabel()} or paste a link`;
+    },
+
     remember() {
         if (!this.media || !this.lastQuery) return;
         this.memory.set(this.media.folder_path, {
             query: document.getElementById('atQuery')?.value ?? this.lastQuery,
             lastQuery: this.lastQuery,
+            source: this.lastSource || this.source,
             results: this.results,
             shown: this.shown,
             scroll: document.getElementById('atResults')?.scrollTop || 0,
@@ -139,22 +168,23 @@ App.pages.addTheme = {
 
     async search() {
         const query = document.getElementById('atQuery').value.trim();
-        // Enter and leaving the field can both fire: search each text once
-        if (!query || query === this.lastQuery) return;
+        // Enter and leaving the field can both fire: search each text once per source
+        if (!query || (query === this.lastQuery && this.source === this.lastSource)) return;
         this.lastQuery = query;
+        this.lastSource = this.source;
         const token = ++this.searchToken;
         const list = document.getElementById('atResults');
 
         if (/^https?:\/\//i.test(query)) {
             list.innerHTML = '';
-            return this.select({ url: query, title: 'Video from the pasted link', channel: '', duration: '', thumbnail: '' });
+            return this.select({ url: query, title: 'Track from the pasted link', channel: '', duration: '', thumbnail: '' });
         }
 
-        list.innerHTML = `<div class="py-10 text-center text-faint flex items-center justify-center gap-2">${icon('loader-circle', 'animate-spin')}Searching YouTube...</div>`;
+        list.innerHTML = `<div class="py-10 text-center text-faint flex items-center justify-center gap-2">${icon('loader-circle', 'animate-spin')}Searching ${esc(this.sourceLabel())}...</div>`;
         refreshIcons();
         let results;
         try {
-            results = await api('/api/search_youtube', { query });
+            results = await api('/api/search', { query, source: this.source });
         } catch {
             results = [];
         }
@@ -170,14 +200,14 @@ App.pages.addTheme = {
         if (!list) return;
         this.drawSuggested();
         if (!this.results.length) {
-            list.innerHTML = `<div class="py-10 text-center text-faint">No results. Try other words, or paste a YouTube link.</div>`;
+            list.innerHTML = `<div class="py-10 text-center text-faint">No results on ${esc(this.sourceLabel())}. Try other words, another source, or paste a link.</div>`;
             return;
         }
         list.innerHTML = this.results.slice(0, this.shown).map((r, i) => `
             <button data-result="${i}" class="w-full text-left flex gap-3 p-2 rounded-md ${this.choice?.url === r.url ? 'bg-accent-soft ring-1 ring-accent' : 'hover:bg-surface'}">
                 <div class="w-28 aspect-video rounded bg-raised flex-shrink-0 relative overflow-hidden">
                     ${r.thumbnail ? `<img src="${esc(r.thumbnail)}" alt="" loading="lazy" class="w-full h-full object-cover">` : ''}
-                    <span class="absolute bottom-1 right-1 text-[10px] bg-black/80 px-1 rounded font-mono">${esc(r.duration)}</span>
+                    ${r.duration ? `<span class="absolute bottom-1 right-1 text-[10px] bg-black/80 px-1 rounded font-mono">${esc(r.duration)}</span>` : ''}
                 </div>
                 <div class="min-w-0"><div class="text-[13px] leading-snug line-clamp-2">${esc(r.title)}</div><div class="text-[11px] text-faint mt-1">${esc(r.channel)}</div></div>
             </button>`).join('') +
@@ -290,13 +320,13 @@ App.pages.addTheme = {
         this.loadingStream = false;
         if (result.success && result.url) {
             this.stream = { url: result.url, duration: result.duration };
-            if (choice.title === 'Video from the pasted link') nameInput.focus();
+            if (choice.title === 'Track from the pasted link') nameInput.focus();
             // Clicking a result means "let me hear it": start as soon as it loads, unless the panel was closed meanwhile
             if (!document.getElementById('drawer').classList.contains('translate-x-full') && Player.key !== 'preview') {
                 Player.toggle('preview', this.stream.url, parseTime(document.getElementById('atStart').value));
             }
         } else {
-            toast('This video cannot be previewed. You can still add it.', 'error');
+            toast('This track cannot be previewed. You can still add it.', 'error');
         }
         this.syncPlayer();
     },
