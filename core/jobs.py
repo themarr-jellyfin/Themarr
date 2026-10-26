@@ -8,6 +8,15 @@ import threading
 ACTIVE = ('waiting', 'processing')
 
 
+def _log(text):
+    # The worker thread must survive a console that cannot print emojis (the app's own log redirector already
+    # ignores that, a plain stdout does not)
+    try:
+        print(text)
+    except (UnicodeEncodeError, OSError):
+        pass
+
+
 class ThemeQueue:
     def __init__(self, process_item, finish_media):
         self._process_item = process_item    # (item, set_stage) -> None, raises on failure
@@ -96,10 +105,14 @@ class ThemeQueue:
                 self._process_item(dict(item), set_stage)
                 item.update(status='completed', stage='')
             except Exception as e:
-                print(f"[QUEUE] ❌ '{item.get('name')}' failed: {e}")
+                # The status first: if logging fails too, the item must not stay "processing" forever
                 item.update(status='error', stage='', message=str(e))
+                _log(f"[QUEUE] ❌ '{item.get('name')}' failed: {e}")
 
-            self._finish_if_done(item['media_folder'])
+            try:
+                self._finish_if_done(item['media_folder'])
+            except Exception as e:
+                _log(f"[QUEUE] ⚠️ Finishing '{os.path.basename(item['media_folder'])}' failed: {e}")
 
     def _finish_if_done(self, media_folder):
         with self._lock:
@@ -113,4 +126,4 @@ class ThemeQueue:
             try:
                 self._finish_media(media_folder, [dict(i) for i in done])
             except Exception as e:
-                print(f"[QUEUE] ⚠️ Finishing '{os.path.basename(media_folder)}' failed: {e}")
+                _log(f"[QUEUE] ⚠️ Finishing '{os.path.basename(media_folder)}' failed: {e}")

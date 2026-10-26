@@ -4,6 +4,7 @@ Run from the repo root:
 import threading
 import time
 import unittest
+from unittest import mock
 
 from core.jobs import ThemeQueue
 
@@ -70,6 +71,16 @@ class QueueTests(unittest.TestCase):
 
         self.queue.clear_finished()
         self.assertEqual(self.statuses(), [])
+
+    def test_failure_is_recorded_when_the_console_cannot_print_it(self):
+        # A console without UTF-8 used to kill the worker on the emoji in the error line, leaving "processing"
+        def broken_print(*args, **kwargs):
+            raise UnicodeEncodeError("charmap", "❌", 0, 1, "character maps to <undefined>")
+
+        self.fail_names.add("A1")
+        with mock.patch("builtins.print", broken_print):
+            self.queue.add("/m/A", [{"name": "A1", "destination": "Main Theme"}, {"name": "A2", "destination": "Main Theme"}])
+            self.assertTrue(wait_until(lambda: self.statuses() == ["error", "completed"]))
 
     def test_processing_item_cannot_be_removed(self):
         self.gate.clear()
