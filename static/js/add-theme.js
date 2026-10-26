@@ -15,8 +15,12 @@ App.pages.addTheme = {
     lastSource: '',
     searchToken: 0,
     memory: new Map(),  // media folder -> last search, so reopening the panel picks up where it was
+    minimized: false,   // stepped aside to the tab on the right edge, with everything kept as it was
 
-    open(media, destination = 'Main Theme') {
+    open(media, destination = null) {
+        // The minimized panel of this same media comes back as it was left
+        if (this.minimized && this.media?.folder_path === media.folder_path) return this.restore(destination);
+        this.close();
         this.media = media;
         this.results = [];
         this.shown = 0;
@@ -25,7 +29,7 @@ App.pages.addTheme = {
         this.suggested = null;
         this.choice = null;
         this.stream = null;
-        this.destination = destination;
+        this.destination = destination || 'Main Theme';
         const saved = this.memory.get(media.folder_path);
         this.source = saved?.source || App.settings.search_source || 'youtube';
 
@@ -33,7 +37,10 @@ App.pages.addTheme = {
         drawer.innerHTML = `
             <div class="px-5 py-4 border-b border-line flex items-center gap-3">
                 <div class="min-w-0"><h2 class="font-semibold">Add theme</h2><p class="text-xs text-faint truncate">${esc(mediaTitle(media))}</p></div>
-                <button data-close class="ml-auto icon-btn">${icon('x')}</button>
+                <div class="ml-auto flex items-center gap-1">
+                    <button data-minimize class="icon-btn" title="Minimize">${icon('chevron-right')}</button>
+                    <button data-close class="icon-btn" title="Close">${icon('x')}</button>
+                </div>
             </div>
             <form id="atSearchForm" class="px-5 pt-4">
                 <div class="relative">
@@ -54,6 +61,7 @@ App.pages.addTheme = {
             </div>`;
 
         drawer.querySelectorAll('[data-close]').forEach(b => b.onclick = () => this.close());
+        drawer.querySelector('[data-minimize]').onclick = () => this.minimize();
         drawer.querySelector('#atSearchForm').onsubmit = event => { event.preventDefault(); this.search(); };
         // Leaving the field after changing it searches too, like pressing Enter
         drawer.querySelector('#atQuery').onchange = () => this.search();
@@ -78,7 +86,7 @@ App.pages.addTheme = {
         list.addEventListener('scroll', loadMoreAtEnd);
         // The wheel also counts when the list is too short to scroll at all
         list.addEventListener('wheel', event => { if (event.deltaY > 0) loadMoreAtEnd(); }, { passive: true });
-        document.getElementById('drawerOverlay').onclick = () => this.close();
+        document.getElementById('drawerOverlay').onclick = () => this.minimize();
 
         document.getElementById('drawerOverlay').classList.remove('hidden');
         drawer.classList.remove('translate-x-full');
@@ -92,7 +100,7 @@ App.pages.addTheme = {
             requestAnimationFrame(() => { document.getElementById('atResults').scrollTop = saved.scroll; });
             return;
         }
-        const season = destination !== 'Main Theme' ? ` ${destination.replace(/^season\s*0*(\d+).*$/i, 'season $1')}` : '';
+        const season = this.destination !== 'Main Theme' ? ` ${destination.replace(/^season\s*0*(\d+).*$/i, 'season $1')}` : '';
         drawer.querySelector('#atQuery').value = `${mediaTitle(media)}${season} opening theme`;
         this.search();
     },
@@ -157,13 +165,78 @@ App.pages.addTheme = {
         });
     },
 
+    isOpen() {
+        return !document.getElementById('drawer').classList.contains('translate-x-full');
+    },
+
+    // X, Cancel and Add to queue: the panel goes away and the preview stops
     close() {
-        const drawer = document.getElementById('drawer');
-        if (drawer.classList.contains('translate-x-full')) return;
+        if (!this.isOpen() && !this.minimized) return;
         this.remember();
         if (Player.key === 'preview') Player.stop();
-        drawer.classList.add('translate-x-full');
+        this.minimized = false;
+        this.hide();
+        this.drawTab();
+    },
+
+    // The arrow, a click outside, Escape or going to another page: the panel steps aside to a tab on the right
+    // edge, keeping the search, the pick, the trim and the preview (still playing if it was)
+    minimize() {
+        if (!this.isOpen()) return;
+        this.remember();
+        this.minimized = true;
+        this.hide();
+        this.drawTab();
+    },
+
+    // A season's "Add theme" button brings the panel back pointing at that season
+    restore(destination = null) {
+        this.minimized = false;
+        this.drawTab();
+        document.getElementById('drawerOverlay').classList.remove('hidden');
+        document.getElementById('drawer').classList.remove('translate-x-full');
+        if (!destination || destination === this.destination) return;
+        this.destination = destination;
+        const dest = document.getElementById('atDest');
+        if (dest && [...dest.options].some(o => o.value === destination)) {
+            dest.value = destination;
+            dest.onchange();
+        }
+    },
+
+    hide() {
+        document.getElementById('drawer').classList.add('translate-x-full');
         document.getElementById('drawerOverlay').classList.add('hidden');
+    },
+
+    drawTab() {
+        const tab = document.getElementById('drawerTab');
+        if (!this.minimized) {
+            tab.classList.add('hidden');
+            tab.dataset.state = '';
+            return;
+        }
+        const play = !this.stream ? '' : Player.isPlaying('preview') ? 'pause' : 'play';
+        const state = `${play}|${this.media.folder_path}`;
+        tab.classList.remove('hidden');
+        if (tab.dataset.state === state) return;  // the player notifies many times a second
+        tab.dataset.state = state;
+        tab.title = 'Open Add theme again';
+        tab.innerHTML = `
+            <span class="text-muted">${icon('chevron-left', 'icon-sm')}</span>
+            ${play ? `<button data-tab-play class="w-7 h-7 rounded-full grid place-items-center ${play === 'pause' ? 'bg-accent hover:bg-accent-hover text-white' : 'bg-raised hover:bg-line text-ink'}"
+                title="${play === 'pause' ? 'Pause' : 'Play'} the preview">${icon(play, 'icon-sm')}</button>` : ''}
+            <span class="text-[11px] text-muted whitespace-nowrap overflow-hidden text-ellipsis max-h-52 [writing-mode:vertical-rl] rotate-180">Add theme · ${esc(mediaTitle(this.media))}</span>`;
+        tab.onclick = () => this.restore();
+        const button = tab.querySelector('[data-tab-play]');
+        if (button) button.onclick = event => { event.stopPropagation(); this.togglePreview(); };
+        refreshIcons();
+    },
+
+    togglePreview() {
+        if (!this.stream) return;
+        const start = parseTime(document.getElementById('atStart').value);
+        Player.toggle('preview', this.stream.url, Player.key === 'preview' ? null : start);
     },
 
     async search() {
@@ -306,11 +379,7 @@ App.pages.addTheme = {
             seek: seconds => this.stream && Player.seekTo('preview', this.stream.url, seconds),
         });
         Volume.bind(panel.querySelector('[data-volume]'));
-        panel.querySelector('#atPlay').onclick = () => {
-            if (!this.stream) return;
-            const start = parseTime(document.getElementById('atStart').value);
-            Player.toggle('preview', this.stream.url, Player.key === 'preview' ? null : start);
-        };
+        panel.querySelector('#atPlay').onclick = () => this.togglePreview();
         document.getElementById('atAdd').disabled = false;
         refreshIcons();
 
@@ -322,7 +391,7 @@ App.pages.addTheme = {
             this.stream = { url: result.url, duration: result.duration };
             if (choice.title === 'Track from the pasted link') nameInput.focus();
             // Clicking a result means "let me hear it": start as soon as it loads, unless the panel was closed meanwhile
-            if (!document.getElementById('drawer').classList.contains('translate-x-full') && Player.key !== 'preview') {
+            if (this.isOpen() && Player.key !== 'preview') {
                 Player.toggle('preview', this.stream.url, parseTime(document.getElementById('atStart').value));
             }
         } else {
@@ -355,6 +424,7 @@ App.pages.addTheme = {
     },
 
     syncPlayer() {
+        if (this.minimized) this.drawTab();
         const button = document.getElementById('atPlay');
         if (!button) return;
         const state = this.loadingStream ? 'loading' : (Player.isPlaying('preview') ? 'pause' : 'play');

@@ -43,6 +43,8 @@
 <!-- Add theme drawer -->
 <div id="drawerOverlay" class="hidden fixed inset-0 bg-black/60 z-30"></div>
 <aside id="drawer" class="fixed top-0 right-0 h-full w-[560px] max-w-full bg-side border-l border-line z-40 translate-x-full transition-transform duration-200 flex flex-col"></aside>
+<!-- The drawer minimized: a tab on the right edge that brings it back as it was -->
+<div id="drawerTab" class="hidden fixed right-0 top-1/2 -translate-y-1/2 z-40 w-10 flex flex-col items-center gap-2 py-3 bg-side border border-r-0 border-line rounded-l-lg shadow-2xl cursor-pointer hover:bg-surface transition-colors"></div>
 
 <!-- Dialogs (confirm, folder picker, backup import) -->
 <div id="dialogOverlay" class="hidden fixed inset-0 bg-black/70 z-50 grid place-items-center p-4">

@@ -169,7 +169,7 @@ document.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
     closeMenu();
     if (!document.getElementById('dialogOverlay').classList.contains('hidden')) closeDialog();
-    else if (App.pages.addTheme) App.pages.addTheme.close();
+    else if (App.pages.addTheme) App.pages.addTheme.minimize();
 });
 
 // ---------------------------------------------------------------------------
@@ -506,8 +506,9 @@ App.render = function () {
         item.classList.toggle('active', item.dataset.nav === page || (page === 'media' && item.dataset.nav === 'library')));
     if (changedPage) {
         closeMenu();
-        Player.stop();
-        App.pages.addTheme?.close();
+        // The Add theme preview goes along to the next page, in the minimized panel
+        if (Player.key !== 'preview') Player.stop();
+        App.pages.addTheme?.minimize();
         document.getElementById('view').scrollTop = 0;
         App.setBackdrop(null);
     }
