@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import tempfile
 import shutil
@@ -284,7 +285,44 @@ def get_streaming_url(youtube_url):
             }
     except Exception as e:
         print(f"[AUDIO] Could not get the audio stream: {e}")
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": str(e), **explain_unavailable(e)}
+
+
+# What the source says when it will not hand a video over, and what that means for the person choosing it.
+# blocked: the download fails the same way, so the track cannot be added; otherwise it may work on another try.
+_UNAVAILABLE = [
+    ('age', True, ('confirm your age', 'age-restricted', 'inappropriate for some users'),
+     "YouTube marks this video as age-restricted and only plays it to signed-in accounts."),
+    ('members', True, ("channel's members", 'members-only', 'members only', 'join this channel'),
+     "Only members of the channel can watch this video."),
+    ('private', True, ('private video', 'video is private'),
+     "This video is private."),
+    ('region', True, ('in your country', 'not available in your location', 'geo restrict'),
+     "This video is blocked where Themarr is running (copyright or the uploader's choice)."),
+    ('live', True, ('live event will begin', 'premieres in', 'is a live', 'this live event', 'is_live'),
+     "This is a live stream or a premiere that has not happened yet, so there is no track to take."),
+    ('removed', True, ('video unavailable', 'has been removed', 'no longer available', 'account associated', 'does not exist', 'http error 404'),
+     "It was taken down, deleted or the link is wrong."),
+    ('bot', False, ('not a bot', 'http error 429', 'too many requests'),
+     "YouTube asked Themarr to prove it is not a bot. This usually passes after a few minutes."),
+]
+
+
+def _source_reason(error):
+    """The source's own words from a yt-dlp error, without 'ERROR: [youtube] <id>:' and terminal colors"""
+    text = re.sub(r'\x1b\[[0-9;]*m', '', str(error)).strip()
+    text = re.sub(r'^(ERROR:\s*)?(\[[^\]]+\]\s*[\w-]+:\s*)?', '', text)
+    return text.splitlines()[0].strip() if text else ''
+
+
+def explain_unavailable(error):
+    """{'reason', 'message', 'blocked', 'detail'} for a yt-dlp error: why a link cannot be played or downloaded"""
+    detail = _source_reason(error)
+    lowered = str(error).lower()
+    for reason, blocked, needles, message in _UNAVAILABLE:
+        if any(n in lowered for n in needles):
+            return {"reason": reason, "message": message, "blocked": blocked, "detail": detail}
+    return {"reason": "unknown", "message": "The source would not hand this track over.", "blocked": False, "detail": detail}
 
 def _download_fraction(status):
     """How much of the file yt-dlp has downloaded, from 0 to 1, or None when it cannot tell"""
@@ -323,7 +361,14 @@ def download_music(youtube_url, on_progress=None):
         options['postprocessor_hooks'] = [lambda s: s.get('status') == 'started' and s.get('postprocessor') == 'ExtractAudio'
                                           and report('convert', None)]
     with yt_dlp.YoutubeDL(options) as ydl:
-        info = ydl.extract_info(youtube_url, download=True)
+        try:
+            info = ydl.extract_info(youtube_url, download=True)
+        except yt_dlp.utils.DownloadError as e:
+            # The Activity page shows this: say why in plain words, with the source's own text after it
+            why = explain_unavailable(e)
+            if why['reason'] == 'unknown':
+                raise
+            raise RuntimeError(f"{why['message']} ({why['detail']})" if why['detail'] else why['message']) from e
         base_filename = ydl.prepare_filename(info)
         mp3_file = os.path.splitext(base_filename)[0] + '.mp3'
     return mp3_file

@@ -156,7 +156,11 @@ class SearchTests(unittest.TestCase):
         self.assertEqual(target, "ytsearch35:charade theme")
         self.assertEqual(results, [{"title": "Charade", "url": "https://www.youtube.com/watch?v=abc", "channel": "Studio",
                                     "duration": "2:05", "thumbnail": "https://i.ytimg.com/vi/abc/mqdefault.jpg",
-                                    "source": "youtube"}])
+                                    "source": "youtube", "live": False}])
+
+    def test_youtube_marks_live_streams(self):
+        results, _ = self.run_search("youtube", [{"id": "live1", "title": "Radio", "live_status": "is_live"}])
+        self.assertTrue(results[0]["live"])
 
     def test_youtube_music_links_to_youtube(self):
         results, target = self.run_search("youtube_music", [

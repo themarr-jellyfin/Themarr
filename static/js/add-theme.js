@@ -16,6 +16,7 @@ App.pages.addTheme = {
     searchToken: 0,
     memory: new Map(),  // media folder -> last search, so reopening the panel picks up where it was
     minimized: false,   // stepped aside to the tab on the right edge, with everything kept as it was
+    unplayable: new Map(),  // url -> why the source would not hand it over ({reason, message, blocked, detail})
 
     open(media, destination = null) {
         // The minimized panel of this same media comes back as it was left
@@ -35,6 +36,7 @@ App.pages.addTheme = {
 
         const drawer = document.getElementById('drawer');
         drawer.innerHTML = `
+            <div data-resize="drawer" class="resize-handle -left-1"></div>
             <div class="px-5 py-4 border-b border-line flex items-center gap-3">
                 <div class="min-w-0"><h2 class="font-semibold">Add theme</h2><p class="text-xs text-faint truncate">${esc(mediaTitle(media))}</p></div>
                 <div class="ml-auto flex items-center gap-1">
@@ -54,12 +56,13 @@ App.pages.addTheme = {
             </form>
             <div id="atSuggested" class="hidden px-5 pt-3"></div>
             <div id="atResults" class="flex-1 overflow-y-auto scroll px-5 py-3 space-y-1"></div>
-            <div id="atSelected" class="hidden border-t border-line bg-surface px-5 py-4 space-y-4"></div>
+            <div id="atSelected" class="hidden relative border-t border-line bg-surface px-5 py-4 space-y-4"></div>
             <div class="px-5 py-3 border-t border-line flex items-center justify-end gap-2">
                 <button data-close class="btn btn-ghost">Cancel</button>
                 <button id="atAdd" class="btn btn-primary" disabled>${icon('plus')}Add to queue</button>
             </div>`;
 
+        Resizer.bind(drawer.querySelector('[data-resize]'), 'drawer');
         drawer.querySelectorAll('[data-close]').forEach(b => b.onclick = () => this.close());
         drawer.querySelector('[data-minimize]').onclick = () => this.minimize();
         drawer.querySelector('#atSearchForm').onsubmit = event => { event.preventDefault(); this.search(); };
@@ -276,19 +279,68 @@ App.pages.addTheme = {
             list.innerHTML = `<div class="py-10 text-center text-faint">No results on ${esc(this.sourceLabel())}. Try other words, another source, or paste a link.</div>`;
             return;
         }
-        list.innerHTML = this.results.slice(0, this.shown).map((r, i) => `
-            <button data-result="${i}" class="w-full text-left flex gap-3 p-2 rounded-md ${this.choice?.url === r.url ? 'bg-accent-soft ring-1 ring-accent' : 'hover:bg-surface'}">
+        list.innerHTML = this.results.slice(0, this.shown).map((r, i) => {
+            const blocked = this.unplayable.get(r.url)?.blocked;
+            return `
+            <button data-result="${i}" class="w-full text-left flex gap-3 p-2 rounded-md ${this.choice?.url === r.url ? 'bg-accent-soft ring-1 ring-accent' : 'hover:bg-surface'}"
+                ${blocked ? `title="${esc(this.unplayable.get(r.url).message)}"` : ''}>
                 <div class="w-28 aspect-video rounded bg-raised flex-shrink-0 relative overflow-hidden">
-                    ${r.thumbnail ? `<img src="${esc(r.thumbnail)}" alt="" loading="lazy" class="w-full h-full object-cover">` : ''}
-                    ${r.duration ? `<span class="absolute bottom-1 right-1 text-[10px] bg-black/80 px-1 rounded font-mono">${esc(r.duration)}</span>` : ''}
+                    ${r.thumbnail ? `<img src="${esc(r.thumbnail)}" alt="" loading="lazy" class="w-full h-full object-cover ${blocked ? 'opacity-40 grayscale' : ''}">` : ''}
+                    ${r.live ? `<span class="absolute bottom-1 right-1 text-[10px] bg-red-600 text-white px-1 rounded font-semibold">LIVE</span>`
+                        : r.duration ? `<span class="absolute bottom-1 right-1 text-[10px] bg-black/80 px-1 rounded font-mono">${esc(r.duration)}</span>` : ''}
+                    ${blocked ? `<span class="absolute inset-0 grid place-items-center text-ink">${icon('lock')}</span>` : ''}
                 </div>
-                <div class="min-w-0"><div class="text-[13px] leading-snug line-clamp-2">${esc(r.title)}</div><div class="text-[11px] text-faint mt-1">${esc(r.channel)}</div></div>
-            </button>`).join('') +
+                <div class="min-w-0"><div class="text-[13px] leading-snug line-clamp-2 ${blocked ? 'text-muted' : ''}">${esc(r.title)}</div>
+                    <div class="text-[11px] text-faint mt-1">${blocked ? `<span class="text-amber-400">Cannot be played here</span> · ` : ''}${esc(r.channel)}</div></div>
+            </button>`;
+        }).join('') +
             (this.results.length > this.shown ? `<button id="atMore" class="w-full btn btn-ghost justify-center mt-2">Show more results</button>` : '');
 
         list.querySelectorAll('[data-result]').forEach(b => b.onclick = () => this.select(this.results[+b.dataset.result]));
         const more = list.querySelector('#atMore');
         if (more) more.onclick = () => { this.shown += 10; this.drawResults(); this.remember(); };
+        refreshIcons();
+    },
+
+    // The site a link belongs to, and its page for people (SoundCloud search results carry an API link instead)
+    siteOf(url) {
+        const host = (() => { try { return new URL(url).hostname; } catch { return ''; } })();
+        if (/(^|\.)(youtube\.com|youtu\.be)$/.test(host)) return { name: 'YouTube', page: url };
+        if (/(^|\.)soundcloud\.com$/.test(host)) return { name: 'SoundCloud', page: host.startsWith('api') ? '' : url };
+        return { name: 'the source', page: /^https?:/.test(url) ? url : '' };
+    },
+
+    // The source would not hand the track over: say so in place of the player, in its own words, with a way to watch it
+    // there. Blocked tracks cannot be added either: the download asks the source the same way and fails the same way
+    showUnavailable(choice, why) {
+        const site = this.siteOf(choice.url);
+        const title = why.reason === 'removed' ? 'This video is no longer available'
+            : why.blocked ? `${site.name} does not let Themarr play this ${site.name === 'YouTube' ? 'video' : 'track'}`
+            : 'Could not load the preview';
+        const next = why.blocked ? 'Themarr cannot preview or download it. Pick another result.' : 'Try again, or add it anyway.';
+        document.getElementById('atPlayer').classList.add('hidden');
+        document.getElementById('atOpenSite')?.classList.add('hidden');  // the notice has its own, bigger button
+        const notice = document.getElementById('atNotice');
+        notice.classList.remove('hidden');
+        notice.innerHTML = `
+            <div class="flex gap-3 rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+                <span class="text-amber-400 mt-0.5">${icon(why.blocked ? 'lock' : 'triangle-alert')}</span>
+                <div class="min-w-0 flex-1">
+                    <div class="text-[13px] font-medium text-ink">${esc(title)}</div>
+                    <p class="text-xs text-muted mt-1">${esc(why.message)} ${next}</p>
+                    ${why.detail ? `<p class="text-[11px] text-faint mt-1 break-words">${esc(site.name === 'the source' ? 'The source' : site.name)} says: "${esc(why.detail)}"</p>` : ''}
+                    <div class="flex flex-wrap gap-2 mt-3">
+                        ${site.page && why.reason !== 'removed' ? `<a href="${esc(site.page)}" target="_blank" rel="noopener" class="btn">${icon('external-link')}Open on ${esc(site.name)}</a>` : ''}
+                        ${why.blocked ? '' : `<button data-retry class="btn btn-ghost">${icon('rotate-cw')}Try again</button>`}
+                    </div>
+                </div>
+            </div>`;
+        const retry = notice.querySelector('[data-retry]');
+        if (retry) retry.onclick = () => this.select(choice);
+        // Leaving for the site: the preview of another track would play over the video
+        notice.querySelector('a')?.addEventListener('click', () => { if (Player.key === 'preview') Player.el.pause(); });
+        document.getElementById('atAdd').disabled = why.blocked;
+        refreshIcons();
     },
 
     // Default name: the title for the main theme, "Title - Opening" in a season, numbered when the name is taken there
@@ -330,8 +382,12 @@ App.pages.addTheme = {
         const fx = settings.audio_fx || {};
         const panel = document.getElementById('atSelected');
         panel.classList.remove('hidden');
+        const site = this.siteOf(choice.url);
         panel.innerHTML = `
-            <div class="flex items-center gap-3">
+            ${site.page ? `<a id="atOpenSite" href="${esc(site.page)}" target="_blank" rel="noopener" class="icon-btn p-1 absolute top-2 right-3 !mt-0"
+                title="Open on ${esc(site.name)} (pauses the preview)">${icon('external-link', 'icon-sm')}</a>` : ''}
+            <div id="atNotice" class="hidden"></div>
+            <div id="atPlayer" class="flex items-center gap-3">
                 <button id="atPlay" class="w-9 h-9 rounded-full bg-accent hover:bg-accent-hover text-white grid place-items-center flex-shrink-0" title="Play or pause">${icon('loader-circle', 'animate-spin')}</button>
                 <div class="flex-1 min-w-0 pt-5">
                     <div id="atTimeline">${Timeline.html()}</div>
@@ -380,14 +436,29 @@ App.pages.addTheme = {
         });
         Volume.bind(panel.querySelector('[data-volume]'));
         panel.querySelector('#atPlay').onclick = () => this.togglePreview();
+        // Watching the video there: the preview stops so the two do not play over each other
+        panel.querySelector('#atOpenSite')?.addEventListener('click', () => { if (Player.key === 'preview') Player.el.pause(); });
         document.getElementById('atAdd').disabled = false;
         refreshIcons();
+
+        // Known already (a live stream on the search page, or tried before): no need to ask the source again
+        const known = choice.live
+            ? { reason: 'live', blocked: true, detail: '', message: 'This is a live stream or a premiere that has not happened yet, so there is no track to take.' }
+            : this.unplayable.get(choice.url);
+        if (known?.blocked) {
+            this.loadingStream = false;
+            this.unplayable.set(choice.url, known);
+            this.drawResults();
+            this.showUnavailable(choice, known);
+            return this.syncPlayer();
+        }
 
         this.loadingStream = true;
         const result = await api('/api/get_stream_info', { url: choice.url }).catch(() => ({ success: false }));
         if (this.choice !== choice) return;
         this.loadingStream = false;
         if (result.success && result.url) {
+            this.unplayable.delete(choice.url);
             this.stream = { url: result.url, duration: result.duration };
             if (choice.title === 'Track from the pasted link') nameInput.focus();
             // Clicking a result means "let me hear it": start as soon as it loads, unless the panel was closed meanwhile
@@ -395,7 +466,10 @@ App.pages.addTheme = {
                 Player.toggle('preview', this.stream.url, parseTime(document.getElementById('atStart').value));
             }
         } else {
-            toast('This track cannot be previewed. You can still add it.', 'error');
+            const why = result.reason ? result : { reason: 'unknown', blocked: false, detail: '', message: 'Themarr could not reach the source.' };
+            this.unplayable.set(choice.url, why);
+            if (why.blocked) this.drawResults();
+            this.showUnavailable(choice, why);
         }
         this.syncPlayer();
     },

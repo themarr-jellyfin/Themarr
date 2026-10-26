@@ -193,6 +193,8 @@ def _youtube(query):
             'duration': _duration_text(entry.get('duration')) or '0:00',
             'thumbnail': f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg" if video_id else '',
             'source': 'youtube',
+            # Live streams and premieres have no fixed track; the search page is the only early warning YouTube gives
+            'live': entry.get('live_status') in ('is_live', 'is_upcoming'),
         })
     return results
 
