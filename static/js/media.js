@@ -205,8 +205,10 @@ App.pages.media = {
         const track = this.media.tracks.find(t => t.file_path === path);
         const key = `track:${path}`;
         const streamUrl = `/api/library/stream?path=${encodeURIComponent(path)}`;
+        // For the Now playing tab, once the page is left with the track playing
+        const info = { title: track.file_name.replace(/\.mp3$/i, ''), media: mediaTitle(this.media), path: this.media.folder_path };
 
-        row.querySelector('[data-play]').onclick = () => Player.toggle(key, streamUrl);
+        row.querySelector('[data-play]').onclick = () => Player.toggle(key, streamUrl, null, info);
 
         // Seek bar of the playing track: while the thumb is held, playback does not pull it back
         const seek = row.querySelector('[data-seek]');
@@ -217,7 +219,7 @@ App.pages.media = {
             seek.addEventListener('change', release);
             seek.oninput = () => {
                 seek.style.setProperty('--level', `${(seek.value / (seek.max || 1)) * 100}%`);
-                Player.seekTo(key, streamUrl, Number(seek.value));
+                Player.seekTo(key, streamUrl, Number(seek.value), info);
             };
         }
         row.querySelector('[data-trim]')?.addEventListener('click', () => this.setEditing(path, 'trim'));
@@ -253,7 +255,7 @@ App.pages.media = {
             Timeline.bind(editor.querySelector('[data-timeline]'), {
                 duration,
                 current: () => Player.position(key),
-                seek: seconds => Player.seekTo(key, streamUrl, seconds),
+                seek: seconds => Player.seekTo(key, streamUrl, seconds, info),
             });
             ['start', 'end'].forEach(which => editor.querySelector(`[data-trim-${which}]`).oninput = event => {
                 this.editing[which] = event.target.value;

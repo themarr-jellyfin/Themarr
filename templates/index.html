@@ -44,8 +44,11 @@
 <!-- Add theme drawer -->
 <div id="drawerOverlay" class="hidden fixed inset-0 bg-black/60 z-30"></div>
 <aside id="drawer" class="fixed top-0 right-0 h-full drawer bg-side border-l border-line z-40 translate-x-full transition-transform duration-200 flex flex-col"></aside>
-<!-- The drawer minimized: a tab on the right edge that brings it back as it was -->
-<div id="drawerTab" class="hidden fixed right-0 top-1/2 -translate-y-1/2 z-40 w-10 flex flex-col items-center gap-2 py-3 bg-side border border-r-0 border-line rounded-l-lg shadow-2xl cursor-pointer hover:bg-surface transition-colors"></div>
+<!-- Tabs on the right edge: the drawer minimized (brings it back as it was) and the library theme still playing -->
+<div class="fixed right-0 top-1/2 -translate-y-1/2 z-[35] flex flex-col items-end gap-2">
+    <div id="drawerTab" class="hidden w-10 flex flex-col items-center gap-2 py-3 bg-side border border-r-0 border-line rounded-l-lg shadow-2xl cursor-pointer hover:bg-surface transition-colors"></div>
+    <div id="nowPlayingTab" class="hidden w-10 flex flex-col items-center gap-2 py-3 bg-side border border-r-0 border-line rounded-l-lg shadow-2xl cursor-pointer hover:bg-surface transition-colors"></div>
+</div>
 
 <!-- Dialogs (confirm, folder picker, backup import) -->
 <div id="dialogOverlay" class="hidden fixed inset-0 bg-black/70 z-50 grid place-items-center p-4">

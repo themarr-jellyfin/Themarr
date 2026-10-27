@@ -248,6 +248,7 @@ function mediaTitle(media) {
 const Player = {
     el: null,
     key: null,
+    info: null,     // { title, media, path } of a library track, for the Now playing tab
     listeners: new Set(),
 
     init() {
@@ -292,12 +293,13 @@ const Player = {
     },
 
     // Plays url for `key`; calling again with the same key pauses or resumes
-    toggle(key, url, startAt = null) {
+    toggle(key, url, startAt = null, info = null) {
         if (this.key === key && this.el.src) {
             this.el.paused ? this.el.play() : this.el.pause();
             return;
         }
         this.key = key;
+        this.info = info;
         this.pendingSeek = null;
         this.el.src = url;
         if (startAt != null) this.el.addEventListener('loadedmetadata', () => { this.el.currentTime = startAt; }, { once: true });
@@ -310,10 +312,11 @@ const Player = {
     },
 
     // Moves `key` to `seconds` without starting it, loading it first when another audio is loaded
-    seekTo(key, url, seconds) {
+    seekTo(key, url, seconds, info = null) {
         seconds = Math.max(0, seconds);
         if (this.key !== key || !this.el.src) {
             this.key = key;
+            this.info = info;
             this.el.src = url;
             this.el.load();
         }
@@ -342,6 +345,7 @@ const Player = {
         this.el.removeAttribute('src');
         this.el.load();
         this.key = null;
+        this.info = null;
         this.notify();
     },
 
@@ -391,6 +395,46 @@ const Volume = {
             }
         });
         if (changed) refreshIcons();
+    },
+};
+
+// ---------------------------------------------------------------------------
+// Now playing: a library theme keeps playing after leaving its media page, with a tab on the right edge
+// (under the Add theme one) to pause, stop or go back to the media. It goes away when the track ends.
+// ---------------------------------------------------------------------------
+const NowPlaying = {
+    draw() {
+        const tab = document.getElementById('nowPlayingTab');
+        const info = Player.info;
+        const away = info && Player.key?.startsWith('track:') && !(App.route.name === 'media' && App.route.arg === info.path);
+        if (away && Player.el.ended) return Player.stop();
+        if (!away) {
+            tab.classList.add('hidden');
+            tab.dataset.state = '';
+            return;
+        }
+        const play = Player.isPlaying(Player.key) ? 'pause' : 'play';
+        const state = `${play}|${Player.key}`;
+        tab.classList.remove('hidden');
+        if (tab.dataset.state === state) return;  // the player notifies many times a second
+        tab.dataset.state = state;
+        tab.title = `Open ${info.media}`;
+        tab.innerHTML = `
+            <span class="text-muted">${icon('chevron-left', 'icon-sm')}</span>
+            <button data-np-play class="w-7 h-7 rounded-full grid place-items-center ${play === 'pause' ? 'bg-accent hover:bg-accent-hover text-white' : 'bg-raised hover:bg-line text-ink'}"
+                title="${play === 'pause' ? 'Pause' : 'Play'}">${icon(play, 'icon-sm')}</button>
+            <button data-np-stop class="icon-btn p-1" title="Stop">${icon('x', 'icon-sm')}</button>
+            <span class="text-[11px] text-muted whitespace-nowrap overflow-hidden text-ellipsis max-h-52 [writing-mode:vertical-rl] rotate-180">${esc(info.title)} · ${esc(info.media)}</span>`;
+        tab.onclick = () => App.go('media', info.path);
+        tab.querySelector('[data-np-play]').onclick = event => {
+            event.stopPropagation();
+            Player.el.paused ? Player.el.play() : Player.el.pause();
+        };
+        tab.querySelector('[data-np-stop]').onclick = event => {
+            event.stopPropagation();
+            Player.stop();
+        };
+        refreshIcons();
     },
 };
 
@@ -575,13 +619,15 @@ App.render = function () {
         item.classList.toggle('active', item.dataset.nav === page || (page === 'media' && item.dataset.nav === 'library')));
     if (changedPage) {
         closeMenu();
-        // The Add theme preview goes along to the next page, in the minimized panel
-        if (Player.key !== 'preview') Player.stop();
+        // The Add theme preview goes along to the next page, in the minimized panel, and a library theme that
+        // is playing goes along in the Now playing tab
+        if (Player.key !== 'preview' && !Player.isPlaying(Player.key)) Player.stop();
         App.pages.addTheme?.minimize();
         document.getElementById('view').scrollTop = 0;
         App.setBackdrop(null);
     }
     App.pages[page].render(document.getElementById('view'), arg);
+    NowPlaying.draw();
     refreshIcons();
 };
 
@@ -721,6 +767,7 @@ App.pendingFor = function (folder) {
 // ---------------------------------------------------------------------------
 App.start = async function () {
     Player.init();
+    Player.listeners.add(() => NowPlaying.draw());
     const [info, settings] = await Promise.all([api('/api/app_info'), api('/api/get_settings')]);
     App.info = info;
     App.settings = settings;
