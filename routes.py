@@ -99,7 +99,8 @@ def register_routes(app, api_system):
     def api_library_folders():
         if request.method == 'POST':
             return jsonify(api_system.set_library_folders(body().get('folders', [])))
-        return jsonify({"success": True, "folders": api_system.get_library_folders()})
+        folders = api_system.get_library_folders()
+        return jsonify({"success": True, "folders": folders, "disks": api_system.folder_disk_usage(folders)})
 
     @app.route('/api/select_folder', methods=['POST'])
     def api_select_folder():

@@ -3,6 +3,7 @@ import json
 import threading
 import time
 import re
+import shutil
 import tempfile
 import requests
 import subprocess
@@ -638,6 +639,18 @@ class Api:
             folders = sorted((os.path.join(MEDIA_ROOT, n) for n in os.listdir(MEDIA_ROOT)
                               if os.path.isdir(os.path.join(MEDIA_ROOT, n)) and not n.startswith('.')), key=str.lower)
         return folders
+
+    @staticmethod
+    def folder_disk_usage(folders):
+        """Size and free space of the disk under each folder, for Settings. A folder that cannot be read is left out"""
+        disks = {}
+        for folder in folders:
+            try:
+                usage = shutil.disk_usage(folder)
+            except OSError:
+                continue
+            disks[folder] = {"total": usage.total, "free": usage.free}
+        return disks
 
     def set_library_folders(self, folders):
         clean = []

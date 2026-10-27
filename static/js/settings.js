@@ -1,7 +1,20 @@
 // Settings page: library folders, audio defaults, Jellyfin, backup and account. Changes save on their own.
 
 function fmtSize(bytes) {
+    if (bytes >= 1099511627776) return `${(bytes / 1099511627776).toFixed(1)} TB`;
     return bytes >= 1073741824 ? `${(bytes / 1073741824).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1048576))} MB`;
+}
+
+// Free space of the disk under a media folder: a bar of the used part, amber past 90% and red past 95%
+function diskBar(disk) {
+    if (!disk?.total) return '';
+    const used = (disk.total - disk.free) / disk.total * 100;
+    const color = used >= 95 ? 'bg-red-500' : used >= 90 ? 'bg-amber-400' : 'bg-accent';
+    const text = used >= 95 ? 'text-red-400' : used >= 90 ? 'text-amber-300' : 'text-faint';
+    return `<div class="mt-1.5 flex items-center gap-3" title="${Math.round(used)}% of this disk is used">
+        <div class="w-40 max-w-[40%] h-1.5 bg-raised rounded-full overflow-hidden flex-shrink-0"><div class="h-full ${color} rounded-full" style="width:${used.toFixed(1)}%"></div></div>
+        <span class="text-[11px] ${text} whitespace-nowrap">${fmtSize(disk.free)} free of ${fmtSize(disk.total)}</span>
+    </div>`;
 }
 
 App.pages.settings = {
@@ -9,7 +22,7 @@ App.pages.settings = {
         const s = App.settings;
         const fx = s.audio_fx || {};
         const server = App.info.server_mode;
-        const folders = await api('/api/library/folders').then(r => r.folders || []).catch(() => []);
+        const { folders = [], disks = {} } = await api('/api/library/folders').catch(() => ({}));
         if (App.route.name !== 'settings') return;
 
         view.innerHTML = `
@@ -18,12 +31,12 @@ App.pages.settings = {
 
                 <section class="card">
                     <div class="px-5 py-3 border-b border-line"><h2 class="font-medium">Media folders</h2>
-                        <p class="text-xs text-faint mt-0.5">The folders that hold your series and movies, one per library. Each subfolder is one media.</p></div>
+                        <p class="text-xs text-faint mt-0.5">The folders that hold your series and movies, one per library. Each subfolder is one media. The bar shows the disk each one is on.</p></div>
                     <div id="setFolders" class="divide-y divide-line">
                         ${folders.length ? folders.map(f => `
                             <div class="px-5 py-3 flex items-center gap-3">
                                 <span class="text-faint">${icon('folder')}</span>
-                                <div class="min-w-0"><div>${esc(f.split(/[\\/]/).filter(Boolean).pop())}</div><div class="font-mono text-[11px] text-faint truncate" title="${esc(f)}">${esc(f)}</div></div>
+                                <div class="min-w-0 flex-1"><div>${esc(f.split(/[\\/]/).filter(Boolean).pop())}</div><div class="font-mono text-[11px] text-faint truncate" title="${esc(f)}">${esc(f)}</div>${diskBar(disks[f])}</div>
                                 <button data-remove-folder="${esc(f)}" class="ml-auto icon-btn hover:text-red-400" title="Remove from Themarr (nothing is deleted)">${icon('x')}</button>
                             </div>`).join('') : `<div class="px-5 py-4 text-xs text-muted">No folders yet.</div>`}
                         <div class="px-5 py-3"><button id="setAddFolder" class="btn btn-ghost text-accent-text">${icon('plus', 'icon-sm')}Add folder</button></div>
