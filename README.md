@@ -41,6 +41,9 @@ Jellyfin's own pages that opens the current series or movie in Themarr.
 <p align="center"><sub>The films in the screenshots, their posters and stills are in the public domain (from Wikimedia Commons); the title logos are drawn with open fonts.</sub></p>
 
 > [!NOTE]
+> Themarr is an independent project, separate from and not affiliated with
+> [LizardByte](https://github.com/LizardByte) or Themerr.
+>
 > Looking for fully automatic themes from a shared database? See
 > [Themerr](https://github.com/LizardByte/Themerr). Themarr is the hands-on alternative: you choose each track,
 > which suits media with several openings or a different theme per season. Its database,
